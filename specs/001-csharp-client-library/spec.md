@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "Create client libraries based on the project's proto files for C# , High-performance binary protocol communication , Bi-directional streaming capabilities ,Type-safe API interface"
 
+## Clarifications
+
+### Session 2026-04-28
+
+- Q: What should the public C# client API use as its primary failure-handling model? -> A: Expose generated gRPC clients plus convenience wrapper methods returning typed success/failure results.
+- Q: How should C# client package compatibility be versioned against proto contracts and the MT5 gRPC server? -> A: Use independent client SemVer plus documented proto contract version/hash and tested server version range.
+- Q: What observability behavior must the C# client library provide for calls and failures? -> A: Optional ILogger integration for connection, call failure, deadline/cancellation, and MT5 error events.
+- Q: What deadline/timeout policy should the convenience wrapper methods use by default? -> A: No built-in timeout; support optional client-wide default deadline and per-call overrides.
+- Q: How should the client handle insecure versus TLS connections by default? -> A: Allow insecure connections by default unless TLS options are supplied.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Build a C# Trading Client (Priority: P1)
@@ -112,13 +122,20 @@ receiving typed streaming messages with cancellation and error handling.
   repeated value, optional value, timestamp, numeric, identifier, and error
   fields matching the project contracts.
 - **FR-003**: Developers MUST be able to configure server address, port, secure
-  connection settings, deadlines or cancellation, and call credentials where
-  supported by the runtime environment.
+  connection settings, cancellation, optional client-wide default deadlines,
+  per-call deadline overrides, and call credentials where supported by the
+  runtime environment; convenience wrapper methods MUST NOT impose a built-in
+  timeout when no deadline is configured.
+- **FR-003a**: The client library MUST allow insecure connections by default
+  when no TLS options are supplied and MUST use TLS settings when they are
+  explicitly configured.
 - **FR-004**: The client library MUST preserve the project's binary protocol
   communication and MUST NOT require developers to serialize or parse raw text
   payloads for normal contract-defined calls.
-- **FR-005**: The client library MUST expose a clear typed failure path for
-  transport failures, server-side gRPC failures, and MT5 error payloads.
+- **FR-005**: The client library MUST expose the generated gRPC clients for
+  advanced callers and convenience wrapper methods that return typed
+  success/failure results for transport failures, server-side gRPC failures,
+  and MT5 error payloads.
 - **FR-006**: The client library MUST include usage examples for connection,
   account information, symbol information, market data, order validation, order
   submission, and error handling.
@@ -130,11 +147,16 @@ receiving typed streaming messages with cancellation and error handling.
   declared by the proto files.
 - **FR-009**: Contract regeneration MUST produce a repeatable C# client artifact
   from the project proto files and detect when generated outputs are stale.
-- **FR-010**: The feature MUST document package version compatibility between
-  the C# client library, the proto contracts, and the MT5 gRPC server package.
+- **FR-010**: The feature MUST version the C# client package with independent
+  SemVer and document the generated proto contract version or hash plus the
+  tested compatible MT5 gRPC server package version range.
 - **FR-011**: The C# client library MUST build as a `netstandard2.0` compatible
   package so .NET Framework 4.8 and other compatible applications can consume
   it.
+- **FR-012**: The client library MUST provide optional `ILogger` integration
+  that records connection attempts, call failures, deadline or cancellation
+  outcomes, and MT5 error payload events without requiring callers to adopt an
+  OpenTelemetry dependency.
 
 ### Protocol and MT5 Contract Impact *(mandatory)*
 
@@ -165,10 +187,12 @@ receiving typed streaming messages with cancellation and error handling.
   must consume the client library without a runtime upgrade.
 - **Contract Operation**: A service method defined by the project proto files,
   including its request type, response type, error behavior, and call pattern.
-- **Connection Configuration**: Host, port, security settings, deadlines,
-  cancellation behavior, and credentials needed to reach a server.
-- **Typed Error Result**: The caller-visible failure representation for
-  transport errors, gRPC status errors, and MT5 error payloads.
+- **Connection Configuration**: Host, port, security settings, optional
+  client-wide default deadlines, per-call deadline overrides, cancellation
+  behavior, and credentials needed to reach a server.
+- **Typed Error Result**: The caller-visible success/failure wrapper result
+  used by convenience methods to represent successful responses, transport
+  errors, gRPC status errors, and MT5 error payloads.
 - **Streaming Call**: A contract-declared call pattern that may send messages,
   receive messages, or do both over a single long-lived call.
 
@@ -194,6 +218,9 @@ receiving typed streaming messages with cancellation and error handling.
 - **SC-007**: A .NET Framework 4.8 sample or compatibility check can reference
   the delivered package and complete at least one typed client call against a
   test server.
+- **SC-008**: With `ILogger` configured, tests can observe log entries for a
+  failed connection attempt, a deadline or cancellation outcome, and an MT5
+  error payload returned through a typed failure result.
 
 ## Assumptions
 
@@ -203,8 +230,9 @@ receiving typed streaming messages with cancellation and error handling.
   client surface.
 - Existing unary MT5 operations remain unary until a separate contract change
   introduces streaming RPCs.
-- Secure and insecure connection modes are both needed because local development
-  and remote deployment have different trust boundaries.
+- Insecure connections are allowed by default when TLS options are not supplied;
+  secure connection settings remain configurable because remote deployments may
+  require TLS.
 - Validation can use a test server, mocks, or contract fixtures rather than a
   live broker account.
 - `netstandard2.0` is the minimum compatibility target for the initial package

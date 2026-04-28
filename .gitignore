@@ -87,6 +87,11 @@ cover/
 *.mo
 *.pot
 *.log
+bin/
+obj/
+*.user
+*.suo
+packages/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

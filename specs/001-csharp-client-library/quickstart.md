@@ -10,7 +10,7 @@
 ## Build the package
 
 ```powershell
-dotnet restore mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln
+dotnet restore mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln --source https://api.nuget.org/v3/index.json
 dotnet build mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release
 ```
 
@@ -34,29 +34,30 @@ dotnet test mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release
 
 Expected result:
 
-- unit tests pass for options, channel creation, and error handling
+- unit tests pass for options, channel creation, wrapper result mapping,
+  deadline behavior, security mode selection, and `ILogger` events
 - contract tests pass for all current services and RPCs
 - compatibility tests verify a .NET Framework 4.8 sample can reference the
   `netstandard2.0` package and complete a typed unary call against a test server
+- generation or drift checks report no stale C# generated artifacts
 
-## Use from a modern C# application
+## Use generated clients directly
 
 ```csharp
 using MetaTrader.Grpc.Client;
-using MetaTrader.V1;
+using Metatrader.V1;
 
 var options = new Mt5GrpcClientOptions
 {
-    Address = new Uri("https://localhost:50051"),
-    UseTls = true,
-    DefaultDeadline = TimeSpan.FromSeconds(5)
+    Address = new Uri("http://localhost:50051")
 };
 
 using var channel = Mt5GrpcClientFactory.CreateChannel(options);
 var accountClient = new AccountInfoService.AccountInfoServiceClient(channel);
+
 var response = await accountClient.GetAccountInfoAsync(
     new AccountInfoRequest(),
-    deadline: DateTime.UtcNow.AddSeconds(5));
+    cancellationToken: CancellationToken.None);
 
 if (response.Error is not null && response.Error.Code != 0)
 {
@@ -68,6 +69,76 @@ else
 }
 ```
 
+Expected result: the default configuration can call a local insecure endpoint
+when no TLS options are supplied.
+
+## Use convenience wrapper results
+
+```csharp
+using MetaTrader.Grpc.Client;
+
+var options = new Mt5GrpcClientOptions
+{
+    Address = new Uri("http://localhost:50051"),
+    DefaultDeadline = TimeSpan.FromSeconds(5)
+};
+
+using var client = Mt5GrpcClientFactory.Create(options);
+
+var result = await client.GetAccountInfoAsync(
+    deadline: DateTime.UtcNow.AddSeconds(2),
+    cancellationToken: CancellationToken.None);
+
+if (!result.IsSuccess)
+{
+    Console.WriteLine($"{result.Error.Operation}: {result.Error.Message}");
+    return;
+}
+
+Console.WriteLine(result.Value.AccountInfo.Login);
+```
+
+Expected result: wrapper methods return typed success/failure results for
+transport failures, gRPC status failures, and MT5 error payloads. No timeout is
+applied unless `DefaultDeadline` or a per-call deadline is configured.
+
+## Enable client logging
+
+```csharp
+using Microsoft.Extensions.Logging;
+using MetaTrader.Grpc.Client;
+
+using var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole();
+    builder.SetMinimumLevel(LogLevel.Information);
+});
+
+var options = new Mt5GrpcClientOptions
+{
+    Address = new Uri("http://localhost:50051"),
+    LoggerFactory = loggerFactory
+};
+
+using var client = Mt5GrpcClientFactory.Create(options);
+```
+
+Expected result: configured logs include connection attempts, call failures,
+deadline or cancellation outcomes, and MT5 error payload events.
+
+## Use TLS
+
+```csharp
+var options = new Mt5GrpcClientOptions
+{
+    Address = new Uri("https://mt5-grpc.example.com:50051"),
+    TlsOptions = Mt5GrpcTlsOptions.SystemTrust()
+};
+```
+
+Expected result: TLS settings are used when supplied. Remote deployments should
+configure TLS according to their trust boundary and credential requirements.
+
 ## Use from .NET Framework 4.8
 
 .NET Framework 4.8 consumers use the same `netstandard2.0` package, but the
@@ -76,7 +147,7 @@ sample application.
 
 ```csharp
 using Grpc.Net.Client;
-using MetaTrader.V1;
+using Metatrader.V1;
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -104,3 +175,22 @@ rg "stream|streaming" protos specs/001-csharp-client-library mt5_grpc_client_csh
 
 Expected result: docs state that current MT5 proto services are unary-only and
 only describe streaming support for contract-declared streaming RPCs or fixtures.
+
+## Validate package compatibility metadata
+
+```powershell
+dotnet pack mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj -c Release
+```
+
+Expected result: the package metadata documents independent client SemVer, the
+generated proto contract version or hash, and the tested compatible MT5 gRPC
+server package version range.
+
+## Validate generated binding drift
+
+```powershell
+mt5_grpc_client_csharp/scripts/check-generated.ps1 -Configuration Release
+```
+
+Expected result: the C# client project builds from `protos/*.proto` and reports
+that generated C# bindings match the current proto inputs.
