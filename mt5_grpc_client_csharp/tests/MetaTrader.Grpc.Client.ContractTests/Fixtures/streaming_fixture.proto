@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package metatrader.test.v1;
+
+message StreamingRequest {
+  string symbol = 1;
+  int32 sequence = 2;
+}
+
+message StreamingResponse {
+  string symbol = 1;
+  int32 sequence = 2;
+  string status = 3;
+}
+
+service StreamingFixtureService {
+  rpc ServerStream(StreamingRequest) returns (stream StreamingResponse);
+  rpc ClientStream(stream StreamingRequest) returns (StreamingResponse);
+  rpc BidiStream(stream StreamingRequest) returns (stream StreamingResponse);
+}

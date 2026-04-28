@@ -87,6 +87,11 @@ cover/
 *.mo
 *.pot
 *.log
+bin/
+obj/
+*.user
+*.suo
+packages/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -133,3 +138,4 @@ cython_debug/
 /.specify/integration.json
 /.specify/init-options.json
 /.specify/extensions.yml
+/mt5_grpc_client_csharp/.vs/

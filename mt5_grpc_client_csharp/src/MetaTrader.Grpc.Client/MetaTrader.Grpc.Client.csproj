@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
+    <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
+    <PackageId>MetaTrader.Grpc.Client</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>MetaTrader gRPC</Authors>
+    <Company>MetaTrader gRPC</Company>
+    <Description>C# client library for the MetaTrader 5 gRPC server contracts.</Description>
+    <PackageTags>metatrader;mt5;grpc;protobuf;client</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <ProtoContractIdentity>protos-001-csharp-client-library</ProtoContractIdentity>
+    <TestedServerVersionRange>[0.1.0,1.0.0)</TestedServerVersionRange>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>Proto contract identity: protos-001-csharp-client-library. Tested server range: [0.1.0,1.0.0).</PackageReleaseNotes>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="..\..\..\protos\*.proto" GrpcServices="Client" ProtoRoot="..\..\..\protos" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

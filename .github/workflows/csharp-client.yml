@@ -1,0 +1,28 @@
+name: csharp-client
+
+on:
+  push:
+    paths:
+      - "mt5_grpc_client_csharp/**"
+      - "protos/**"
+      - ".github/workflows/csharp-client.yml"
+  pull_request:
+    paths:
+      - "mt5_grpc_client_csharp/**"
+      - "protos/**"
+      - ".github/workflows/csharp-client.yml"
+
+jobs:
+  build-test-pack:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - run: dotnet restore mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln
+      - run: dotnet build mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release --no-restore
+      - run: dotnet test mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release --no-build
+      - run: dotnet pack mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj -c Release --no-build
+      - shell: pwsh
+        run: mt5_grpc_client_csharp/scripts/check-generated.ps1 -Configuration Release
