@@ -1,0 +1,40 @@
+{
+  "workflow": "speckit",
+  "specName": "001-csharp-client-library",
+  "branch": "001-csharp-client-library",
+  "selectedAt": "2026-04-28T03:09:33.740Z",
+  "currentStep": "plan",
+  "status": "planned",
+  "stepHistory": {
+    "specify": {
+      "startedAt": "2026-04-28T03:13:05.204Z",
+      "completedAt": "2026-04-28T03:13:05.204Z"
+    },
+    "plan": {
+      "startedAt": "2026-04-28T03:13:05.223Z",
+      "completedAt": "2026-04-28T03:15:34.436Z"
+    }
+  },
+  "transitions": [
+    {
+      "step": "specify",
+      "substep": null,
+      "from": {
+        "step": "specify",
+        "substep": null
+      },
+      "by": "extension",
+      "at": "2026-04-28T03:13:05.204Z"
+    },
+    {
+      "step": "plan",
+      "substep": null,
+      "from": {
+        "step": "specify",
+        "substep": null
+      },
+      "by": "extension",
+      "at": "2026-04-28T03:13:05.223Z"
+    }
+  ]
+}
