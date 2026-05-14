@@ -3,6 +3,24 @@ from concurrent import futures
 import grpc
 import logging
 from mt5_grpc_proto import *
+from mt5_grpc_proto import (
+    account_pb2_grpc,
+    common_pb2_grpc,
+    deal_pb2_grpc,
+    history_orders_pb2_grpc,
+    initialize_pb2_grpc,
+    market_book_pb2_grpc,
+    market_data_pb2_grpc,
+    order_calc_pb2_grpc,
+    order_check_pb2_grpc,
+    order_pb2_grpc,
+    position_pb2_grpc,
+    symbol_info_pb2_grpc,
+    symbol_info_tick_pb2_grpc,
+    symbols_pb2_grpc,
+    terminal_pb2_grpc,
+    trade_pb2_grpc,
+)
 from .imp import *
 from .logging_interceptor import VerboseLoggingInterceptor
 
