@@ -57,9 +57,9 @@ A developer or operator wants to run the MT5 gRPC server on a Linux host without
 
 - What happens when a git tag is pushed but the Dockerfile has a syntax error?
 - How does the workflow behave if GHCR authentication credentials are missing or expired?
-- What happens if the same tag is pushed again (re-tagging an existing release)?
+- If the same tag is pushed again (re-tagging an existing release), the existing GHCR image for that tag is overwritten silently; traceability is preserved via the commit SHA label.
 - How is the build handled if external dependencies (Wine base image, Python installer, MT5 installer URL) are temporarily unavailable?
-- What is the behavior when the image layer cache is cold (first build or cache eviction)?
+- Every build is a cold build (no layer cache); build time must still satisfy SC-001 (≤30 minutes).
 
 ## Requirements *(mandatory)*
 
@@ -92,12 +92,25 @@ A developer or operator wants to run the MT5 gRPC server on a Linux host without
 - **SC-004**: Build failures are surfaced within the repository's CI status checks, providing actionable error output to the contributor.
 - **SC-005**: No manual credentials management is required for the automated build-and-push workflow under normal operating conditions.
 
+## Clarifications
+
+### Session 2026-05-14
+
+- Q: Should the workflow include automated vulnerability scanning before pushing? → A: No vulnerability scanning in the automated workflow.
+- Q: If a git tag is deleted and re-pushed, should the workflow overwrite the existing GHCR image or fail? → A: Overwrite silently; the workflow succeeds.
+- Q: Should the workflow cache Docker build layers between runs? → A: No caching; always build from scratch.
+- Q: Should build/push failures trigger an external notification beyond CI status checks? → A: No; rely on GitHub Actions status checks only.
+- Q: Should published images be cryptographically signed or include SBOM attestation? → A: No signing or attestation; deferred to a future hardening phase.
+
 ## Assumptions
 
 - The repository is hosted on GitHub and has access to GitHub Actions for CI/CD automation.
 - GHCR is used as the target registry; the image namespace follows the pattern `ghcr.io/<github-owner>/<repo-name>`.
 - The target platform for the image is `linux/amd64`; multi-architecture builds (e.g., ARM64) are out of scope because Wine/MT5 require x86-64.
 - The MT5 installer download URL (`MT5_SETUP_URL`) may change over time and is provided at runtime via environment variable, not baked into the image.
-- Build cache is desirable to reduce build times but is not required for correctness.
+- Docker layer caching is not used; the workflow always builds from scratch. The 30-minute SC-001 target is expected to be achievable without caching.
 - Image visibility on GHCR defaults to the same visibility as the repository (public if the repo is public).
 - The Python installer embedded in the image (`/opt/installers/python-installer.exe`) is handled by the existing Dockerfile; this feature does not change how it is sourced.
+- Automated vulnerability scanning is out of scope for the build-and-push workflow.
+- Image signing and SBOM attestation are out of scope; deferred to a future hardening phase.
+- Failure notifications beyond GitHub Actions built-in status checks are out of scope.
