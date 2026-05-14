@@ -3,6 +3,20 @@ import logging
 import json
 from google.protobuf.json_format import MessageToDict
 
+SENSITIVE_FIELD_NAMES = {
+    "password",
+    "passwd",
+    "pwd",
+    "token",
+    "access_token",
+    "refresh_token",
+    "secret",
+    "api_key",
+    "apikey",
+}
+REDACTED_VALUE = "[REDACTED]"
+
+
 class VerboseLoggingInterceptor(grpc.ServerInterceptor):
     """
     A gRPC server interceptor that provides verbose logging of all requests and responses.
@@ -27,11 +41,26 @@ class VerboseLoggingInterceptor(grpc.ServerInterceptor):
         """Convert a protobuf message to a dict, with error handling."""
         try:
             if hasattr(message, 'test_field'):  # Handle test messages
-                return {'test_field': message.test_field}
-            return MessageToDict(message, preserving_proto_field_name=True)
+                return self._redact_sensitive_fields({'test_field': message.test_field})
+            return self._redact_sensitive_fields(
+                MessageToDict(message, preserving_proto_field_name=True)
+            )
         except Exception as e:
             self._logger.warning(f"Failed to convert message to dict: {e}")
             return {"__str__": str(message)}
+
+    def _redact_sensitive_fields(self, value):
+        """Redact secret-like fields before request/response payload logging."""
+        if isinstance(value, dict):
+            return {
+                key: REDACTED_VALUE
+                if key.lower() in SENSITIVE_FIELD_NAMES
+                else self._redact_sensitive_fields(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._redact_sensitive_fields(item) for item in value]
+        return value
 
     def intercept_service(self, continuation, handler_call_details):
         """

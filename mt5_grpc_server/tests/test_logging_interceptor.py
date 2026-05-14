@@ -25,6 +25,12 @@ class TestMessage:
             return False
         return self.test_field == other.test_field
 
+class SecretMessage:
+    """Mock protobuf-like message containing secret fields for testing"""
+    def __init__(self):
+        self.password = "plain-text-password"
+        self.token = "plain-text-token"
+
 class MockRpcMethodHandler:
     """Mock RPC method handler that properly implements the interface"""
     def __init__(self, behavior, request_streaming=False, response_streaming=False):
@@ -98,6 +104,30 @@ class TestVerboseLoggingInterceptor(unittest.TestCase):
         response_call = self.logger_mock.info.call_args_list[1]
         self.assertIn("Response from TestMethod", response_call[0][0])
         self.assertIn("test_value", response_call[0][0])
+
+    def test_message_to_dict_redacts_sensitive_fields(self):
+        request_dict = {
+            "login": "833671",
+            "password": "plain-text-password",
+            "nested": {
+                "token": "plain-text-token",
+                "safe": "visible",
+            },
+            "items": [
+                {
+                    "api_key": "plain-text-api-key",
+                }
+            ],
+        }
+
+        with patch.object(mt5_grpc_server.logging_interceptor, "MessageToDict", return_value=request_dict):
+            logged_dict = self.interceptor._message_to_dict(SecretMessage())
+
+        self.assertEqual(logged_dict["password"], "[REDACTED]")
+        self.assertEqual(logged_dict["nested"]["token"], "[REDACTED]")
+        self.assertEqual(logged_dict["items"][0]["api_key"], "[REDACTED]")
+        self.assertEqual(logged_dict["login"], "833671")
+        self.assertEqual(logged_dict["nested"]["safe"], "visible")
 
     def test_streaming_response_logging(self):
         # Create mock request and response iterator

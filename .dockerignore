@@ -1,0 +1,10 @@
+.git
+.claude
+.venv
+**/__pycache__/
+**/.pytest_cache/
+**/bin/
+**/obj/
+**/dist/
+**/build/
+**/*.egg-info/
