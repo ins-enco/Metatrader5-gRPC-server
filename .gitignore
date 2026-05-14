@@ -139,3 +139,5 @@ cython_debug/
 /.specify/init-options.json
 /.specify/extensions.yml
 /mt5_grpc_client_csharp/.vs/
+/.claude/skills/
+/.claude/settings.local.json
