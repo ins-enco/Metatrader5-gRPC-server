@@ -24,7 +24,7 @@ story phase.
 
 **Purpose**: Create the workflow file skeleton before adding any triggers or steps.
 
-- [ ] T001 Create `.github/workflows/docker-ghcr.yml` with workflow name `"Docker Build and Push to GHCR"`, empty `on:` block, and one job `build-and-push` with `runs-on: ubuntu-latest` and empty `steps: []`
+- [X] T001 Create `.github/workflows/docker-ghcr.yml` with workflow name `"Docker Build and Push to GHCR"`, empty `on:` block, and one job `build-and-push` with `runs-on: ubuntu-latest` and empty `steps: []`
 
 ---
 
@@ -35,9 +35,9 @@ any user story can produce a working workflow run.
 
 **⚠️ CRITICAL**: US1, US2, and US3 validation all require these steps in place.
 
-- [ ] T002 Add workflow-level `permissions: contents: read` and `packages: write` block to `.github/workflows/docker-ghcr.yml` (satisfies FR-006 — no PAT required)
-- [ ] T003 [P] Add `uses: actions/checkout@v4` step (name: "Checkout repository") to job steps in `.github/workflows/docker-ghcr.yml`
-- [ ] T004 [P] Add `uses: docker/login-action@v3` step (name: "Log in to GHCR", registry: `ghcr.io`, username: `${{ github.actor }}`, password: `${{ secrets.GITHUB_TOKEN }}`) in `.github/workflows/docker-ghcr.yml`
+- [X] T002 Add workflow-level `permissions: contents: read` and `packages: write` block to `.github/workflows/docker-ghcr.yml` (satisfies FR-006 — no PAT required)
+- [X] T003 [P] Add `uses: actions/checkout@v4` step (name: "Checkout repository") to job steps in `.github/workflows/docker-ghcr.yml`
+- [X] T004 [P] Add `uses: docker/login-action@v3` step (name: "Log in to GHCR", registry: `ghcr.io`, username: `${{ github.actor }}`, password: `${{ secrets.GITHUB_TOKEN }}`) in `.github/workflows/docker-ghcr.yml`
 
 **Checkpoint**: Foundation ready — checkout and GHCR login in place. User story triggers can now be added.
 
@@ -55,9 +55,9 @@ after validation.
 
 ### Implementation for User Story 1
 
-- [ ] T005 [US1] Add `on: push: tags: ['v*.*.*']` trigger block to `.github/workflows/docker-ghcr.yml`
-- [ ] T006 [US1] Add `uses: docker/metadata-action@v5` step (id: `meta`, name: "Extract Docker metadata") with `images: ghcr.io/${{ github.repository_owner }}/mt5-grpc-server`, tags `type=semver,pattern={{version}}` and `type=semver,pattern={{major}}.{{minor}}`, and `flavor: latest=auto` in `.github/workflows/docker-ghcr.yml` (satisfies FR-002, FR-003, FR-005)
-- [ ] T007 [US1] Add `uses: docker/build-push-action@v6` step (name: "Build and push Docker image") with `context: .`, `file: deploy/wine-docker/Dockerfile`, `push: true`, `tags: ${{ steps.meta.outputs.tags }}`, `labels: ${{ steps.meta.outputs.labels }}`, `no-cache: true`, `platforms: linux/amd64` in `.github/workflows/docker-ghcr.yml` (satisfies FR-001, FR-007, FR-008)
+- [X] T005 [US1] Add `on: push: tags: ['v*.*.*']` trigger block to `.github/workflows/docker-ghcr.yml`
+- [X] T006 [US1] Add `uses: docker/metadata-action@v5` step (id: `meta`, name: "Extract Docker metadata") with `images: ghcr.io/${{ github.repository_owner }}/mt5-grpc-server`, tags `type=semver,pattern={{version}}` and `type=semver,pattern={{major}}.{{minor}}`, and `flavor: latest=auto` in `.github/workflows/docker-ghcr.yml` (satisfies FR-002, FR-003, FR-005)
+- [X] T007 [US1] Add `uses: docker/build-push-action@v6` step (name: "Build and push Docker image") with `context: .`, `file: deploy/wine-docker/Dockerfile`, `push: true`, `tags: ${{ steps.meta.outputs.tags }}`, `labels: ${{ steps.meta.outputs.labels }}`, `no-cache: true`, `platforms: linux/amd64` in `.github/workflows/docker-ghcr.yml` (satisfies FR-001, FR-007, FR-008)
 
 **Checkpoint**: US1 complete — tag push produces `v1.2.3`, `1.2`, and `latest` on GHCR.
 Validate via independent test before proceeding.
@@ -76,8 +76,8 @@ returns the expected commit SHA.
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] Add `branches: [main]` to the existing `on.push` block alongside the tags trigger in `.github/workflows/docker-ghcr.yml` (satisfies FR-009, FR-004)
-- [ ] T009 [US2] Add `type=ref,event=branch` tag rule to the existing `docker/metadata-action@v5` step in `.github/workflows/docker-ghcr.yml` so branch pushes produce the `main` tag (satisfies FR-004); note that `org.opencontainers.image.revision` OCI label is injected automatically — no additional configuration needed (satisfies FR-005)
+- [X] T008 [US2] Add `branches: [main]` to the existing `on.push` block alongside the tags trigger in `.github/workflows/docker-ghcr.yml` (satisfies FR-009, FR-004)
+- [X] T009 [US2] Add `type=ref,event=branch` tag rule to the existing `docker/metadata-action@v5` step in `.github/workflows/docker-ghcr.yml` so branch pushes produce the `main` tag (satisfies FR-004); note that `org.opencontainers.image.revision` OCI label is injected automatically — no additional configuration needed (satisfies FR-005)
 
 **Checkpoint**: US2 complete — main branch pushes produce `main`-tagged image on GHCR
 with traceable SHA. Validate via independent test before proceeding.
@@ -97,8 +97,8 @@ confirm the gRPC server starts and accepts connections on port 50051.
 
 ### Implementation for User Story 3
 
-- [ ] T010 [US3] Update `image:` field in `deploy/wine-docker/docker-compose.yml` from `mt5-grpc-server:wine` to `ghcr.io/ins-enco/mt5-grpc-server:latest` so `docker compose pull` fetches from GHCR; the existing `build:` section remains for local development builds
-- [ ] T011 [P] [US3] Verify pull commands in `specs/002-docker-ghcr-push/quickstart.md` match the `image:` value set in T010 and the tag naming produced by the workflow
+- [X] T010 [US3] Update `image:` field in `deploy/wine-docker/docker-compose.yml` from `mt5-grpc-server:wine` to `ghcr.io/ins-enco/mt5-grpc-server:latest` so `docker compose pull` fetches from GHCR; the existing `build:` section remains for local development builds
+- [X] T011 [P] [US3] Verify pull commands in `specs/002-docker-ghcr-push/quickstart.md` match the `image:` value set in T010 and the tag naming produced by the workflow
 
 **Checkpoint**: US3 complete — consumers can pull and run without a local clone or build.
 
@@ -108,8 +108,8 @@ confirm the gRPC server starts and accepts connections on port 50051.
 
 **Purpose**: Final validation and repository hygiene tasks.
 
-- [ ] T012 [P] Validate `.github/workflows/docker-ghcr.yml` YAML and action step syntax using `actionlint` (install: `choco install actionlint` or download from GitHub releases) or push to a fork to trigger GitHub's built-in workflow lint
-- [ ] T013 [P] Add Docker CI status badge to `README.md` using URL `https://github.com/ins-enco/Metatrader5-gRPC-server/actions/workflows/docker-ghcr.yml/badge.svg` pointing to the workflow run page
+- [X] T012 [P] Validate `.github/workflows/docker-ghcr.yml` YAML and action step syntax using `actionlint` (install: `choco install actionlint` or download from GitHub releases) or push to a fork to trigger GitHub's built-in workflow lint
+- [X] T013 [P] Add Docker CI status badge to `README.md` using URL `https://github.com/ins-enco/Metatrader5-gRPC-server/actions/workflows/docker-ghcr.yml/badge.svg` pointing to the workflow run page
 
 ---
 

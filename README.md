@@ -1,5 +1,7 @@
 # Metatrader5 RPC Server 🚀
 
+[![Docker CI](https://github.com/ins-enco/Metatrader5-gRPC-server/actions/workflows/docker-ghcr.yml/badge.svg)](https://github.com/ins-enco/Metatrader5-gRPC-server/actions/workflows/docker-ghcr.yml)
+
 ## 📋 Project Description
 This project is a gRPC server for interacting with Metatrader 5, designed specifically to provide a convenient way to host an API service on Windows and interact with it using any programming language through gRPC. This approach allows you to build trading applications and services in your preferred language while keeping MetaTrader 5 running on Windows.
 
