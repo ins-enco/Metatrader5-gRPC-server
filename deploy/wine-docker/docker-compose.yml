@@ -3,7 +3,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/wine-docker/Dockerfile
-    image: mt5-grpc-server:wine
+    image: ghcr.io/ins-enco/mt5-grpc-server:latest
     container_name: mt5-grpc-server
     ports:
       - "127.0.0.1:50051:50051"
