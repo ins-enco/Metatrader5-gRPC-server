@@ -44,7 +44,7 @@ internal static class Program
 
         var connect = await client.ConnectAsync(
             connectRequest,
-            deadline: DateTime.UtcNow.AddSeconds(2),
+            deadline: DateTime.UtcNow.AddSeconds(30),
             cancellationToken: CancellationToken.None);
 
         if (!connect.IsSuccess)
