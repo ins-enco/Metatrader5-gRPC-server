@@ -5,6 +5,14 @@
 **Status**: Draft
 **Input**: User description: "At C# client library. For every request callers must pass magic integers (action = 1, type = 5) with no compile-time safety, no IntelliSense, and no protection against invalid or mismatched values — errors only surface at runtime on the MT5 server. Add C# enum types (with explicit MT5 numeric values) for every request field that is semantically an MT5 enum but is currently exposed as a raw int — e.g. TradeRequest.Action, Type, TypeFilling, TypeTime, plus OrderCalc.action. Enum class provided separately."
 
+## Clarifications
+
+### Session 2026-07-02
+
+- Q: How should the delivered C# enums be named in the public surface? → A: Verbatim MT5 names from the provided file (`ENUM_ORDER_TYPE.ORDER_TYPE_BUY`, `ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL`, `ENUM_ORDER_TYPE_FILLING`, `ENUM_ORDER_TYPE_TIME`), placed in the client library namespace rather than `MtApi5`.
+- Q: Does scope include response-side reads (position/deal/transaction types) or stay request-only? → A: Request-only — the 6 request fields; response-side typing is a future follow-up.
+- Q: Should `OrderCalc*.action` use the full shared `ENUM_ORDER_TYPE` or a restricted Buy/Sell-only enum? → A: Full shared `ENUM_ORDER_TYPE` (all 9 members); document that profit calc expects Buy/Sell rather than compile-enforcing it.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Build a Trade Request With Named Values (Priority: P1)
@@ -132,7 +140,10 @@ equivalent request.
   field's option set is rejected at author/compile time rather than at runtime.
 - **FR-005**: The order-type concept that is shared between trade submission and
   the calculation requests MUST use a single consistent named representation and
-  numeric mapping across both uses.
+  numeric mapping (`ENUM_ORDER_TYPE`, all nine members) across both uses. The
+  margin and profit calculation `action` fields accept the full `ENUM_ORDER_TYPE`;
+  documentation MUST state that profit calculation expects the Buy or Sell member,
+  and this expectation is not compile-enforced.
 - **FR-006**: The library MUST remain backward compatible for existing callers
   that set these fields with integers: such code MUST continue to compile and
   transmit the same values without modification.
@@ -142,8 +153,14 @@ equivalent request.
 - **FR-008**: Reading a field that contains a numeric value with no corresponding
   named value MUST NOT throw or alter the underlying value.
 - **FR-009**: The named values and their numeric mappings MUST be sourced from
-  the authoritative MT5 enum definitions supplied for this feature; the library
-  MUST NOT invent numeric values or introduce undocumented sentinel values.
+  the authoritative MT5 enum definitions supplied for this feature
+  (`specs/003-csharp-request-enums/Mt5Enums.cs`); the library MUST NOT invent
+  numeric values or introduce undocumented sentinel values.
+- **FR-012**: The delivered enum types MUST use the verbatim MT5 enum type and
+  member names from the supplied source (e.g. `ENUM_ORDER_TYPE.ORDER_TYPE_BUY`,
+  `ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL`), exposed within the client
+  library's own namespace, so callers can cross-reference official MT5/MQL5
+  documentation directly.
 - **FR-010**: Documentation and usage examples for building trade, order-check,
   margin, and profit requests MUST demonstrate the named values for the covered
   fields.
