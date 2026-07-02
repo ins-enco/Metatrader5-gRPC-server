@@ -5,10 +5,38 @@ package metatrader.v1;
 import "common.proto";
 import "google/protobuf/timestamp.proto";
 
+// Trade request action (MT5 ENUM_TRADE_REQUEST_ACTIONS).
+// MT5 defines no action 0, so TRADE_ACTION_UNSPECIFIED = 0 is a proto3-required
+// sentinel; it is not an MT5 action and the server rejects it (places no order).
+enum ENUM_TRADE_REQUEST_ACTIONS {
+  TRADE_ACTION_UNSPECIFIED = 0;   // Sentinel (not an MT5 action); server rejects
+  TRADE_ACTION_DEAL        = 1;   // Immediate execution (market order)
+  TRADE_ACTION_PENDING     = 5;   // Pending order
+  TRADE_ACTION_SLTP        = 6;   // Modify Stop Loss / Take Profit of a position
+  TRADE_ACTION_MODIFY      = 7;   // Modify parameters of an existing order
+  TRADE_ACTION_REMOVE      = 8;   // Delete a pending order
+  TRADE_ACTION_CLOSE_BY    = 10;  // Close a position by an opposite one
+}
+
+// Order filling policy (MT5 ENUM_ORDER_TYPE_FILLING).
+enum ENUM_ORDER_TYPE_FILLING {
+  ORDER_FILLING_FOK    = 0;  // Fill or Kill
+  ORDER_FILLING_IOC    = 1;  // Immediate or Cancel
+  ORDER_FILLING_RETURN = 2;  // Return
+}
+
+// Order lifetime / time-in-force (MT5 ENUM_ORDER_TYPE_TIME).
+enum ENUM_ORDER_TYPE_TIME {
+  ORDER_TIME_GTC           = 0;  // Good till cancelled
+  ORDER_TIME_DAY           = 1;  // Good for the current trading day
+  ORDER_TIME_SPECIFIED     = 2;  // Good until the specified expiration date
+  ORDER_TIME_SPECIFIED_DAY = 3;  // Good until 23:59:59 of the specified day
+}
+
 // Trade Request Message
 message TradeRequest {
   // Trading operation type
-  int32 action = 1;
+  ENUM_TRADE_REQUEST_ACTIONS action = 1;
 
   // EA ID for analytical handling
   int32 magic = 2;
@@ -38,13 +66,13 @@ message TradeRequest {
   int32 deviation = 10;
 
   // Order type
-  int32 type = 11;
+  ENUM_ORDER_TYPE type = 11;
 
   // Order filling type
-  int32 type_filling = 12;
+  ENUM_ORDER_TYPE_FILLING type_filling = 12;
 
   // Order time type
-  int32 type_time = 13;
+  ENUM_ORDER_TYPE_TIME type_time = 13;
 
   // Expiration time for pending orders
   optional google.protobuf.Timestamp expiration = 14;

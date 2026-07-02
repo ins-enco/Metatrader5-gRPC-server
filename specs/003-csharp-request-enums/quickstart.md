@@ -2,8 +2,12 @@
 
 As of `0.2.0`, the request fields that MT5 treats as enums are **native enum types**
 in the contract. `action`, `type`, `type_filling`, `type_time`, and the calculation
-`action` are no longer `int` — the compiler now guides you to the right values, and
-the enum names match the official MQL5 documentation.
+`action` are no longer `int` — the compiler now guides you to the right values.
+
+> **Naming**: the protobuf C# generator renders MT5's `TRADE_ACTION_DEAL`-style
+> member names in PascalCase (`TradeActionDeal`); the verbatim MT5 wire name is
+> preserved as metadata so you can still cross-reference the MQL5 docs. Use the
+> PascalCase form in C# code (shown below).
 
 > **Breaking change**: code that assigned raw integers to these fields (e.g.
 > `Action = 1`) no longer compiles. See [Migrating from integers](#migrating-from-integers).
@@ -19,10 +23,10 @@ var request = new OrderSendRequest
     {
         Symbol       = "EURUSD",
         Volume       = 0.10,
-        Action       = ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL,
-        Type         = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,
-        TypeFilling  = ENUM_ORDER_TYPE_FILLING.ORDER_FILLING_IOC,
-        TypeTime     = ENUM_ORDER_TYPE_TIME.ORDER_TIME_GTC,
+        Action       = ENUM_TRADE_REQUEST_ACTIONS.TradeActionDeal,
+        Type         = ENUM_ORDER_TYPE.OrderTypeBuy,
+        TypeFilling  = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
+        TypeTime     = ENUM_ORDER_TYPE_TIME.OrderTimeGtc,
     }
 };
 
@@ -36,7 +40,7 @@ The same `TradeRequest` works for `CheckOrderAsync` via `OrderCheckRequest`.
 ```csharp
 var margin = await client.CalcMarginAsync(new OrderCalcMarginRequest
 {
-    Action = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,
+    Action = ENUM_ORDER_TYPE.OrderTypeBuy,
     Symbol = "EURUSD",
     Volume = 0.10,
     Price  = 1.0850,
@@ -45,7 +49,7 @@ var margin = await client.CalcMarginAsync(new OrderCalcMarginRequest
 // Profit calc expects Buy or Sell (documented; not compile-enforced).
 var profit = await client.CalcProfitAsync(new OrderCalcProfitRequest
 {
-    Action     = ENUM_ORDER_TYPE.ORDER_TYPE_SELL,
+    Action     = ENUM_ORDER_TYPE.OrderTypeSell,
     Symbol     = "EURUSD",
     Volume     = 0.10,
     PriceOpen  = 1.0850,
@@ -59,7 +63,7 @@ var profit = await client.CalcProfitAsync(new OrderCalcProfitRequest
 var req = new TradeRequest();
 
 // Does NOT compile — an order type is not a valid action:
-// req.Action = ENUM_ORDER_TYPE.ORDER_TYPE_BUY;               // CS0029
+// req.Action = ENUM_ORDER_TYPE.OrderTypeBuy;                 // CS0029
 
 // Does NOT compile — a raw integer is not the enum type:
 // req.Action = 1;                                            // CS0029
@@ -76,10 +80,10 @@ var t = new TradeRequest { Action = 1, Type = 0, TypeFilling = 1, TypeTime = 0 }
 // After (0.2.0):
 var t = new TradeRequest
 {
-    Action      = ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL,   // 1
-    Type        = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,                 // 0
-    TypeFilling = ENUM_ORDER_TYPE_FILLING.ORDER_FILLING_IOC,      // 1
-    TypeTime    = ENUM_ORDER_TYPE_TIME.ORDER_TIME_GTC,            // 0
+    Action      = ENUM_TRADE_REQUEST_ACTIONS.TradeActionDeal,   // 1
+    Type        = ENUM_ORDER_TYPE.OrderTypeBuy,                 // 0
+    TypeFilling = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,      // 1
+    TypeTime    = ENUM_ORDER_TYPE_TIME.OrderTimeGtc,            // 0
 };
 ```
 
