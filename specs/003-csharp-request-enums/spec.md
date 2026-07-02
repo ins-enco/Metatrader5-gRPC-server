@@ -13,6 +13,27 @@
 - Q: Does scope include response-side reads (position/deal/transaction types) or stay request-only? → A: Request-only — the 6 request fields; response-side typing is a future follow-up.
 - Q: Should `OrderCalc*.action` use the full shared `ENUM_ORDER_TYPE` or a restricted Buy/Sell-only enum? → A: Full shared `ENUM_ORDER_TYPE` (all 9 members); document that profit calc expects Buy/Sell rather than compile-enforcing it.
 
+### Session 2026-07-02 (compatibility posture revised)
+
+The initial C#-client-only, backward-compatible posture was reopened. The feature
+now delivers **native protobuf enum-typed request fields** on the shared `.proto`
+contract rather than a C#-only presentation layer over unchanged `int32` fields.
+
+- Q: Scope of the contract change? → A: Update the `.proto`, regenerate both the
+  C# client and Python (`mt5_grpc_proto`) bindings, and verify the Python server
+  still reads the affected fields with identical numeric semantics.
+- Q: How is proto3's mandatory zero-valued enum member handled, given
+  `ENUM_TRADE_REQUEST_ACTIONS` has no MT5 zero and order-type/filling/time already
+  use their real MT5 zero (BUY/FOK/GTC)? → A: Add `TRADE_ACTION_UNSPECIFIED = 0`
+  to the actions enum only; the server MUST reject an unset/UNSPECIFIED action
+  rather than executing it. The other three enums keep their real MT5 zero.
+- Q: Versioning for this breaking public-contract change (integer callers no
+  longer compile)? → A: Pre-1.0 breaking bump to `0.2.0` with a documented
+  integer→enum migration and a coordinated proto contract-identity update.
+- **Supersedes**: the earlier "backward-compatible addition scoped to the C#
+  client library only; `.proto` unchanged" decision and the companion-property
+  approach.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Build a Trade Request With Named Values (Priority: P1)
@@ -77,30 +98,31 @@ order-type numeric value for that direction.
 
 ---
 
-### User Story 3 - Preserve Existing Integer-Based Code (Priority: P3)
+### User Story 3 - Migrate Existing Integer-Based Code (Priority: P3)
 
-A developer with existing code that already sets these request fields using raw
-integers can adopt the new library version without being forced to rewrite that
-code, and can migrate field-by-field at their own pace.
+A developer with existing code that sets these request fields using raw integers
+upgrades to the new library version, sees the now-invalid integer assignments
+flagged by the compiler, and migrates each one to the named value (or an explicit
+cast for a value with no named member) using the migration guide.
 
 **Why this priority**: The library already ships and is consumed (including by
-.NET Framework 4.8 applications per the existing client-library feature).
-Breaking every existing caller that sets these fields would block adoption and
-contradict the project's backward-compatible-addition posture.
+.NET Framework 4.8 applications per the existing client-library feature). Turning
+the fields into enums is a deliberate breaking change, so the upgrade path must be
+explicit, compiler-guided, and documented rather than silent.
 
-**Independent Test**: A code sample that sets the affected fields using the prior
-integer-based approach still compiles and produces the same request against the
-new library version, and a second sample using the named values produces an
-equivalent request.
+**Independent Test**: A code sample written against the prior integer-based API is
+upgraded following the migration guide, compiles against the new version, and
+produces a request that transmits the same numeric values as before.
 
 **Acceptance Scenarios**:
 
-1. **Given** existing caller code that sets an affected request field with an
-   integer, **When** the code is compiled against the new library version,
-   **Then** it continues to compile and produces the same transmitted value.
-2. **Given** a caller mixes named values on some fields and integers on others,
-   **When** the request is built and sent, **Then** all fields transmit their
-   correct MT5 numeric values.
+1. **Given** existing caller code that sets an affected request field with a raw
+   integer, **When** it is compiled against the new library version, **Then** the
+   compiler flags the integer assignment, and replacing it with the documented
+   named value produces an identical transmitted value.
+2. **Given** a caller needs a numeric value with no named member, **When** they
+   follow the migration guide, **Then** an explicit `(EnumType)value` cast lets
+   them set and transmit that value without error.
 
 ### Edge Cases
 
@@ -144,23 +166,48 @@ equivalent request.
   margin and profit calculation `action` fields accept the full `ENUM_ORDER_TYPE`;
   documentation MUST state that profit calculation expects the Buy or Sell member,
   and this expectation is not compile-enforced.
-- **FR-006**: The library MUST remain backward compatible for existing callers
-  that set these fields with integers: such code MUST continue to compile and
-  transmit the same values without modification.
+- **FR-006**: This is a breaking change to the request field types: the covered
+  fields become native protobuf enum types, so existing C# code that assigns raw
+  integers to them will no longer compile. The library MUST ship a documented
+  integer→enum migration path (named values, or an explicit `(EnumType)value` cast
+  for values with no named member) and MUST NOT change the transmitted numeric
+  value for an equivalent selection. The wire encoding stays varint-compatible so
+  no data or wire migration is required.
 - **FR-007**: The library MUST allow a caller to represent and transmit a valid
   MT5 numeric value that is not part of the currently defined named set, so that
-  future MT5-introduced values are not blocked by the type change.
+  future MT5-introduced values are not blocked by the type change. (proto3 enums
+  are open and preserve unknown numeric values.)
 - **FR-008**: Reading a field that contains a numeric value with no corresponding
   named value MUST NOT throw or alter the underlying value.
 - **FR-009**: The named values and their numeric mappings MUST be sourced from
   the authoritative MT5 enum definitions supplied for this feature
   (`specs/003-csharp-request-enums/Mt5Enums.cs`); the library MUST NOT invent
-  numeric values or introduce undocumented sentinel values.
+  numeric values or introduce undocumented sentinel values, with the single
+  documented exception of `TRADE_ACTION_UNSPECIFIED = 0`, required to satisfy
+  proto3's mandatory zero-valued member for `ENUM_TRADE_REQUEST_ACTIONS` (which
+  has no MT5-defined zero). This sentinel MUST be documented and treated as
+  invalid input (see FR-014).
 - **FR-012**: The delivered enum types MUST use the verbatim MT5 enum type and
   member names from the supplied source (e.g. `ENUM_ORDER_TYPE.ORDER_TYPE_BUY`,
-  `ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL`), exposed within the client
-  library's own namespace, so callers can cross-reference official MT5/MQL5
-  documentation directly.
+  `ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL`). Because the enums are now
+  defined in the shared `.proto` contract, they are generated into the protobuf
+  package namespace (`metatrader.v1`, surfaced in C# as `Metatrader.V1`) rather
+  than a hand-written client namespace; the verbatim names still let callers
+  cross-reference official MT5/MQL5 documentation directly.
+- **FR-013**: The affected request fields MUST be defined as protobuf enum types
+  in the `.proto` contract, and all in-repo language bindings (C# client and the
+  `mt5_grpc_proto` Python package) MUST be regenerated from the updated contract.
+  The Python server MUST continue to read the affected fields with identical
+  numeric semantics.
+- **FR-014**: An unset or `TRADE_ACTION_UNSPECIFIED` trade-request action MUST be
+  rejected with a structured error rather than executed, preserving trade safety
+  for the default/zero case.
+- **FR-015**: The shared `ENUM_ORDER_TYPE` MUST be defined once in a shared proto
+  and imported by both the trade request and the order-calculation messages, so
+  the type identity and numeric mapping are the same across all uses.
+- **FR-016**: The change MUST be released as a coordinated version bump — the C#
+  package to `0.2.0` with a matching proto contract-identity update — accompanied
+  by migration documentation.
 - **FR-010**: Documentation and usage examples for building trade, order-check,
   margin, and profit requests MUST demonstrate the named values for the covered
   fields.
@@ -177,22 +224,31 @@ equivalent request.
   `OrderCalcProfitRequest.action`. Response-side integer enum fields (e.g. deal
   type, position type, historical/open order type, market-book type,
   symbol filling mode) are out of scope for this feature.
-- **Compatibility Decision**: Backward-compatible addition scoped to the C#
-  client library only. The `.proto` contract is unchanged: the request fields
-  remain `int32` on the wire, and the named value sets add a type-safe C# access
-  path over those existing integer fields. There is no cross-language impact —
-  the Python server and other-language clients are untouched, and no proto
-  regeneration or field renumbering is required. Existing integer-based callers
-  keep working.
+- **Compatibility Decision**: Breaking, coordinated contract change. The affected
+  request fields change type from `int32` to native protobuf `enum` in the shared
+  `.proto`. Field numbers are preserved and the wire encoding stays varint (proto3
+  enums encode identically to `int32`), so there is no data or wire migration and
+  unknown/future numeric values still round-trip (proto3 open-enum semantics).
+  Source compatibility does break: existing C# integer assignments no longer
+  compile and MUST migrate to named values or explicit enum casts. All in-repo
+  bindings (C# client and the `mt5_grpc_proto` Python package) are regenerated and
+  the Python server is re-verified. Released as `0.2.0` (pre-1.0 breaking) with a
+  documented migration and a proto contract-identity bump. This supersedes the
+  prior C#-only, `.proto`-unchanged decision.
 - **MT5 Operation Mapping**: The covered fields map to MT5's trade-request action
   set, order-type set, order-filling-type set, and order-time-type set, and to
   the buy/sell order-type values used by margin and profit calculation. Named
   selections MUST resolve to the same MT5 numeric values MT5 expects; MT5 return
   codes and error payloads remain unchanged and continue to surface to callers.
-- **Cross-Language Type Notes**: The underlying transmitted value remains an
-  integer on the wire. Named values are a typed presentation of that integer.
-  Values outside the named set MUST remain representable and round-trip without
-  loss. No sentinel values are introduced.
+- **Cross-Language Type Notes**: The transmitted value remains a varint on the
+  wire, identical to the prior `int32` encoding, so cross-language
+  interoperability and any existing serialized data are unaffected. Fields are now
+  typed as protobuf enums; proto3 open-enum semantics keep values outside the
+  named set representable and round-tripping without loss in every language. The
+  only added value is the documented `TRADE_ACTION_UNSPECIFIED = 0` sentinel that
+  proto3 requires for `ENUM_TRADE_REQUEST_ACTIONS`; it denotes "no action set" and
+  is rejected by the server (FR-014). In Python, protobuf enum fields surface as
+  plain integers, so the server reads them with unchanged semantics.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -223,9 +279,10 @@ equivalent request.
 - **SC-003**: A value valid for one covered field but not for another cannot be
   assigned to the wrong field without a compile error, verified for each covered
   field.
-- **SC-004**: 100% of existing caller code paths that set the covered fields via
-  integers continue to compile and transmit identical values against the new
-  library version (0 forced source changes).
+- **SC-004**: The migration guide covers 100% of the covered fields, and every
+  documented migration step converts a prior integer assignment to a named value
+  that transmits the identical numeric value (0 value changes across the
+  migration).
 - **SC-005**: A field can still be set to, and can still read back, an MT5 numeric
   value that has no named entry, without error or value change.
 - **SC-006**: Documented examples for trade, order-check, margin, and profit
@@ -234,6 +291,11 @@ equivalent request.
 - **SC-007**: The named values compile and behave identically on the
   `netstandard2.0` / .NET Framework 4.8 compatibility target and on a modern .NET
   target.
+- **SC-008**: After regeneration, the Python server reads each covered field with
+  the same numeric value it read under the `int32` contract, verified by a
+  server-side contract or integration check.
+- **SC-009**: A trade request submitted with an unset or `TRADE_ACTION_UNSPECIFIED`
+  action returns a structured error and places no order.
 
 ## Assumptions
 
@@ -242,10 +304,13 @@ equivalent request.
   exactly, and drafting-time value guesses carry no authority.
 - Scope is limited to request-side fields. Response-side integer enum fields are
   a possible later extension and are not included here.
-- The feature is delivered as a backward-compatible addition; existing
-  integer-based callers are not forced to change.
+- The feature is delivered as a deliberate breaking change to the request field
+  types; existing integer-based callers must migrate to named values (or explicit
+  casts), guided by the compiler and a migration document, and released as a
+  coordinated `0.2.0` bump.
 - Callers must retain a way to send valid MT5 numeric values not yet in the named
-  set, because MT5 may add values in future terminal builds.
+  set, because MT5 may add values in future terminal builds; proto3 open-enum
+  semantics and explicit casts provide this.
 - The named value sets follow the existing C# client library's supported target
   frameworks, including `netstandard2.0`.
 - Validation can use a test server, mocks, or contract fixtures rather than a live

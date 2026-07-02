@@ -1,51 +1,51 @@
 # Quickstart: Named Values for MT5 Request Fields (C#)
 
-The `MetaTrader.Grpc.Client` package exposes named, compile-checked values for the
-request fields that MT5 treats as enums. You no longer need magic integers on
-`action`, `type`, `type_filling`, `type_time`, or the calculation `action`.
+As of `0.2.0`, the request fields that MT5 treats as enums are **native enum types**
+in the contract. `action`, `type`, `type_filling`, `type_time`, and the calculation
+`action` are no longer `int` — the compiler now guides you to the right values, and
+the enum names match the official MQL5 documentation.
 
-The enum types use the verbatim MT5 names, so they line up 1:1 with the official
-MQL5 documentation.
+> **Breaking change**: code that assigned raw integers to these fields (e.g.
+> `Action = 1`) no longer compiles. See [Migrating from integers](#migrating-from-integers).
 
 ## Build a trade request with named values
 
 ```csharp
-using MetaTrader.Grpc.Client;
 using Metatrader.V1;
 
 var request = new OrderSendRequest
 {
     TradeRequest = new TradeRequest
     {
-        Symbol      = "EURUSD",
-        Volume      = 0.10,
-        ActionEnum      = ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL,
-        TypeEnum        = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,
-        TypeFillingEnum = ENUM_ORDER_TYPE_FILLING.ORDER_FILLING_IOC,
-        TypeTimeEnum    = ENUM_ORDER_TYPE_TIME.ORDER_TIME_GTC,
+        Symbol       = "EURUSD",
+        Volume       = 0.10,
+        Action       = ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL,
+        Type         = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,
+        TypeFilling  = ENUM_ORDER_TYPE_FILLING.ORDER_FILLING_IOC,
+        TypeTime     = ENUM_ORDER_TYPE_TIME.ORDER_TIME_GTC,
     }
 };
 
 var result = await client.SendOrderAsync(request);
 ```
 
-The same `TradeRequest` shape works for `CheckOrderAsync` via `OrderCheckRequest`.
+The same `TradeRequest` works for `CheckOrderAsync` via `OrderCheckRequest`.
 
 ## Calculation requests share the order-type set
 
 ```csharp
 var margin = await client.CalcMarginAsync(new OrderCalcMarginRequest
 {
-    ActionEnum = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,
-    Symbol     = "EURUSD",
-    Volume     = 0.10,
-    Price      = 1.0850,
+    Action = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,
+    Symbol = "EURUSD",
+    Volume = 0.10,
+    Price  = 1.0850,
 });
 
 // Profit calc expects Buy or Sell (documented; not compile-enforced).
 var profit = await client.CalcProfitAsync(new OrderCalcProfitRequest
 {
-    ActionEnum = ENUM_ORDER_TYPE.ORDER_TYPE_SELL,
+    Action     = ENUM_ORDER_TYPE.ORDER_TYPE_SELL,
     Symbol     = "EURUSD",
     Volume     = 0.10,
     PriceOpen  = 1.0850,
@@ -53,53 +53,60 @@ var profit = await client.CalcProfitAsync(new OrderCalcProfitRequest
 });
 ```
 
-## The compiler catches wrong-field values
+## The compiler catches wrong-field and raw-int values
 
 ```csharp
 var req = new TradeRequest();
 
 // Does NOT compile — an order type is not a valid action:
-// req.ActionEnum = ENUM_ORDER_TYPE.ORDER_TYPE_BUY;           // CS0029
+// req.Action = ENUM_ORDER_TYPE.ORDER_TYPE_BUY;               // CS0029
 
-// Does NOT compile — a time policy is not a valid filling policy:
-// req.TypeFillingEnum = ENUM_ORDER_TYPE_TIME.ORDER_TIME_GTC; // CS0029
+// Does NOT compile — a raw integer is not the enum type:
+// req.Action = 1;                                            // CS0029
 ```
 
-## Existing integer code keeps working
+## Migrating from integers
+
+Replace each integer with its named value (identical transmitted value):
 
 ```csharp
-// Unchanged, still compiles, still transmits the same values:
-var legacy = new TradeRequest
+// Before (0.1.x):
+var t = new TradeRequest { Action = 1, Type = 0, TypeFilling = 1, TypeTime = 0 };
+
+// After (0.2.0):
+var t = new TradeRequest
 {
-    Symbol = "EURUSD",
-    Volume = 0.10,
-    Action = 1,        // TRADE_ACTION_DEAL
-    Type   = 0,        // ORDER_TYPE_BUY
+    Action      = ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL,   // 1
+    Type        = ENUM_ORDER_TYPE.ORDER_TYPE_BUY,                 // 0
+    TypeFilling = ENUM_ORDER_TYPE_FILLING.ORDER_FILLING_IOC,      // 1
+    TypeTime    = ENUM_ORDER_TYPE_TIME.ORDER_TIME_GTC,            // 0
 };
-
-// The named and integer forms are equivalent:
-// legacy.ActionEnum == ENUM_TRADE_REQUEST_ACTIONS.TRADE_ACTION_DEAL
 ```
 
-## Sending a value MT5 adds in a future build
-
-Named values do not lock you in. Any integer still round-trips:
+For a numeric value MT5 may add in a future build that has no named member, cast
+explicitly — proto3 open enums preserve it losslessly:
 
 ```csharp
-var req = new TradeRequest();
-req.Action = 99;                    // some future MT5 value
-int raw = (int)req.ActionEnum;      // == 99, no exception
-
-req.ActionEnum = (ENUM_TRADE_REQUEST_ACTIONS)99;
-int stillRaw = req.Action;          // == 99
+var req = new TradeRequest { Action = (ENUM_TRADE_REQUEST_ACTIONS)99 };
+int raw = (int)req.Action;   // == 99, round-trips through serialization, no throw
 ```
+
+## Note on the default action
+
+Leaving `Action` unset is `TRADE_ACTION_UNSPECIFIED` (0), which MT5 does not
+define. The server rejects it with a structured error and places no order — always
+set an explicit action.
 
 ## Verify it
 
-From `mt5_grpc_client_csharp/`:
+Regenerate + test from repo scripts:
 
 ```bash
-dotnet build src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj
-dotnet test tests/MetaTrader.Grpc.Client.Tests/MetaTrader.Grpc.Client.Tests.csproj
-dotnet test tests/MetaTrader.Grpc.Client.CompatibilityTests/MetaTrader.Grpc.Client.CompatibilityTests.csproj
+# C# client (regenerates bindings on build)
+dotnet build mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj
+dotnet test  mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/MetaTrader.Grpc.Client.Tests.csproj
+dotnet test  mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.CompatibilityTests/MetaTrader.Grpc.Client.CompatibilityTests.csproj
+
+# Python bindings + server (regenerate mt5_grpc_proto, then run server tests)
+# (use the repository's documented proto-generation and pytest commands)
 ```

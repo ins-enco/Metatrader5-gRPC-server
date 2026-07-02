@@ -1,35 +1,20 @@
-# Phase 1 Data Model: C# Request Enum Types
+# Phase 1 Data Model: C# Request Enum Types (native proto enums)
 
-This feature adds no persisted data and no new wire messages. The "entities" are
-the C# enum value sets and the companion accessor properties that present the
-existing integer request fields as typed values.
+This feature adds no persisted data. The "entities" are four protobuf `enum` types
+added to the shared contract and the six request fields retyped to use them. All
+names/values are verbatim from `specs/003-csharp-request-enums/Mt5Enums.cs` except
+the single proto3-mandated `TRADE_ACTION_UNSPECIFIED = 0` sentinel.
 
-## Enum value sets
+## Enum types (proto3)
 
-All four are C# `enum` types with underlying type `int`, declared in namespace
-`MetaTrader.Grpc.Client`. Names and values are verbatim from
-`specs/003-csharp-request-enums/Mt5Enums.cs` (the authoritative source, FR-009,
-FR-012). Because C# enums are open, any `int` — including values not listed here —
-is a valid instance and round-trips losslessly (FR-007, FR-008).
+Defined in package `metatrader.v1` (C# namespace `Metatrader.V1`; Python: plain
+integer values). proto3 enums are open — any int, including values with no member,
+is representable and round-trips (FR-007, FR-008).
 
-### ENUM_TRADE_REQUEST_ACTIONS — Trade Action Value Set
-Applies to `TradeRequest.action`. MT5 trade-request operation set.
-
-| Member | Value | Meaning |
-|--------|-------|---------|
-| `TRADE_ACTION_DEAL` | 1 | Immediate execution (market order) |
-| `TRADE_ACTION_PENDING` | 5 | Pending order |
-| `TRADE_ACTION_SLTP` | 6 | Modify SL/TP of an open position |
-| `TRADE_ACTION_MODIFY` | 7 | Modify an existing order |
-| `TRADE_ACTION_REMOVE` | 8 | Delete a pending order |
-| `TRADE_ACTION_CLOSE_BY` | 10 | Close a position by an opposite one |
-
-### ENUM_ORDER_TYPE — Order Type Value Set (shared)
-Applies to `TradeRequest.type`, `OrderCalcMarginRequest.action`, and
-`OrderCalcProfitRequest.action` — one shared representation across trade and
-calculation requests (FR-005). All nine members are included. Profit calculation
-expects `ORDER_TYPE_BUY` or `ORDER_TYPE_SELL`; this expectation is documented, not
-compile-enforced.
+### ENUM_ORDER_TYPE — `common.proto` (shared)
+Used by `TradeRequest.type`, `OrderCalcMarginRequest.action`,
+`OrderCalcProfitRequest.action` (FR-005, FR-015). First member is 0 (satisfies
+proto3 with a real MT5 value).
 
 | Member | Value |
 |--------|-------|
@@ -43,8 +28,22 @@ compile-enforced.
 | `ORDER_TYPE_SELL_STOP_LIMIT` | 7 |
 | `ORDER_TYPE_CLOSE_BY` | 8 |
 
-### ENUM_ORDER_TYPE_FILLING — Order Filling Value Set
-Applies to `TradeRequest.type_filling`.
+### ENUM_TRADE_REQUEST_ACTIONS — `trade.proto`
+Used by `TradeRequest.action`. MT5 defines no action 0, so a documented sentinel
+is added at 0 and rejected by the server (FR-009, FR-014).
+
+| Member | Value | Note |
+|--------|-------|------|
+| `TRADE_ACTION_UNSPECIFIED` | 0 | Added sentinel; not an MT5 action; server rejects |
+| `TRADE_ACTION_DEAL` | 1 | Market order |
+| `TRADE_ACTION_PENDING` | 5 | Pending order |
+| `TRADE_ACTION_SLTP` | 6 | Modify SL/TP |
+| `TRADE_ACTION_MODIFY` | 7 | Modify order |
+| `TRADE_ACTION_REMOVE` | 8 | Delete pending order |
+| `TRADE_ACTION_CLOSE_BY` | 10 | Close by opposite |
+
+### ENUM_ORDER_TYPE_FILLING — `trade.proto`
+Used by `TradeRequest.type_filling`.
 
 | Member | Value |
 |--------|-------|
@@ -52,8 +51,8 @@ Applies to `TradeRequest.type_filling`.
 | `ORDER_FILLING_IOC` | 1 |
 | `ORDER_FILLING_RETURN` | 2 |
 
-### ENUM_ORDER_TYPE_TIME — Order Time Value Set
-Applies to `TradeRequest.type_time`.
+### ENUM_ORDER_TYPE_TIME — `trade.proto`
+Used by `TradeRequest.type_time`.
 
 | Member | Value |
 |--------|-------|
@@ -62,48 +61,44 @@ Applies to `TradeRequest.type_time`.
 | `ORDER_TIME_SPECIFIED` | 2 |
 | `ORDER_TIME_SPECIFIED_DAY` | 3 |
 
-## Covered request fields → companion accessors
+## Retyped request fields
 
-Each covered field keeps its generated `int` property and gains an `Enum`-suffixed
-companion property declared on a `partial class` extension of the generated
-message. The companion is a thin, allocation-free projection:
+Field numbers and wire encoding are unchanged; only the declared type changes.
 
-```
-public EnumType XxxEnum
-{
-    get => (EnumType)Xxx;      // Xxx is the generated int property
-    set => Xxx = (int)value;
-}
-```
+| Message | Field | # | Was | Now |
+|---------|-------|---|-----|-----|
+| `TradeRequest` | `action` | 1 | `int32` | `ENUM_TRADE_REQUEST_ACTIONS` |
+| `TradeRequest` | `type` | 11 | `int32` | `ENUM_ORDER_TYPE` |
+| `TradeRequest` | `type_filling` | 12 | `int32` | `ENUM_ORDER_TYPE_FILLING` |
+| `TradeRequest` | `type_time` | 13 | `int32` | `ENUM_ORDER_TYPE_TIME` |
+| `OrderCalcMarginRequest` | `action` | 1 | `int32` | `ENUM_ORDER_TYPE` |
+| `OrderCalcProfitRequest` | `action` | 1 | `int32` | `ENUM_ORDER_TYPE` |
 
-| Message (namespace `Metatrader.V1`) | Raw `int` field | Companion property | Enum type | Proto field # |
-|-------------------------------------|-----------------|--------------------|-----------|---------------|
-| `TradeRequest` | `Action` | `ActionEnum` | `ENUM_TRADE_REQUEST_ACTIONS` | 1 |
-| `TradeRequest` | `Type` | `TypeEnum` | `ENUM_ORDER_TYPE` | 11 |
-| `TradeRequest` | `TypeFilling` | `TypeFillingEnum` | `ENUM_ORDER_TYPE_FILLING` | 12 |
-| `TradeRequest` | `TypeTime` | `TypeTimeEnum` | `ENUM_ORDER_TYPE_TIME` | 13 |
-| `OrderCalcMarginRequest` | `Action` | `ActionEnum` | `ENUM_ORDER_TYPE` | 1 |
-| `OrderCalcProfitRequest` | `Action` | `ActionEnum` | `ENUM_ORDER_TYPE` | 1 |
-
-`TradeRequest` is reached by callers through `OrderSendRequest.trade_request` and
-`OrderCheckRequest.trade_request`; typing it once covers both send and check paths.
+`TradeRequest` is reached via `OrderSendRequest.trade_request` and
+`OrderCheckRequest.trade_request`; retyping it once covers send and check.
 
 ## Invariants / validation rules
 
-- **V1 (value fidelity, FR-003/SC-002)**: `(int)AnyEnumMember` equals the MT5
-  numeric value in the tables above; setting a companion property then reading the
-  raw `int` yields that value, and vice-versa.
-- **V2 (round-trip, FR-007/FR-008/SC-005)**: For any `int n`, setting the raw
-  field to `n` and reading the companion property, or setting the companion from
-  `(EnumType)n` and reading the raw field, yields `n` unchanged — including `n`
-  with no named member. No throw on either direction.
-- **V3 (cross-field distinctness, FR-004/SC-003)**: The four enum types are
-  distinct C# types; a member of one cannot be assigned to a companion property of
-  another without a compile error.
-- **V4 (backward compatibility, FR-006/SC-004)**: The raw `int` property is
-  unchanged in name, type, and behavior; no existing caller is forced to change.
+- **V1 (value fidelity, FR-003/SC-002)**: each named member's numeric value equals
+  the MT5 value above; the transmitted varint equals that value.
+- **V2 (round-trip, FR-007/FR-008/SC-005)**: any numeric value, including one with
+  no named member, round-trips on set/serialize/parse/read without throw or
+  change (proto3 open enums).
+- **V3 (cross-field distinctness, FR-004/SC-003)**: the four enum types are
+  distinct; assigning one to a field of another type — or assigning a raw int — is
+  a compile error in C#.
+- **V4 (wire compatibility, FR-006/Compatibility Decision)**: encoding is varint,
+  byte-identical to the prior `int32`; existing serialized payloads and other-
+  language peers are unaffected.
+
+## Server behavior (FR-014, SC-009)
+
+`mt5_grpc_server/.../imp/trade.py` MUST reject a trade request whose `action` is
+unset or `TRADE_ACTION_UNSPECIFIED (0)` with a structured `Error` and place no
+order. `order_check.py` and `order_calc.py` read the retyped fields as integers
+(Python protobuf enum semantics) and MUST behave identically to the prior `int32`
+reads (SC-008). No other server logic changes.
 
 ## State transitions
 
-None. These are immutable value sets and stateless projections over request
-fields.
+None. Immutable value sets and stateless field typing.
