@@ -1,5 +1,7 @@
 using System.IO;
 using System;
+using System.Linq;
+using System.Xml.Linq;
 using Metatrader.V1;
 using Xunit;
 
@@ -7,6 +9,39 @@ namespace MetaTrader.Grpc.Client.ContractTests
 {
     public sealed class DocumentationAccuracyTests
     {
+        // Drift guard (FR-005, Decision 4): the authored compatibility values live
+        // in the csproj (<ProtoContractIdentity>/<TestedServerVersionRange>). The
+        // feed-visible surfaces a consumer sees without source access - the packed
+        // README.md and <PackageReleaseNotes> - MUST quote those same values, or
+        // compatibility metadata silently drifts out of sync.
+        [Fact]
+        public void Readme_and_release_notes_carry_current_compatibility_metadata()
+        {
+            var csproj = XDocument.Load(ProjectPath());
+
+            string Prop(string name)
+            {
+                // SDK-style csproj has no default namespace, so a local-name match works.
+                var value = csproj.Descendants()
+                    .Where(e => e.Name.LocalName == name)
+                    .Select(e => e.Value)
+                    .FirstOrDefault();
+                Assert.False(string.IsNullOrWhiteSpace(value), $"csproj is missing <{name}>.");
+                return value!.Trim();
+            }
+
+            var contractId   = Prop("ProtoContractIdentity");
+            var serverRange  = Prop("TestedServerVersionRange");
+            var releaseNotes = Prop("PackageReleaseNotes");
+
+            var readme = File.ReadAllText(Path.Combine(RepoClientRoot(), "README.md"));
+
+            Assert.Contains(contractId, readme);
+            Assert.Contains(serverRange, readme);
+            Assert.Contains(contractId, releaseNotes);
+            Assert.Contains(serverRange, releaseNotes);
+        }
+
         [Fact]
         public void Readme_states_current_mt5_services_are_unary_only()
         {
@@ -49,8 +84,19 @@ namespace MetaTrader.Grpc.Client.ContractTests
 
         private static string MigrationGuidePath()
         {
-            var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-            return Path.Combine(root, "MIGRATION.md");
+            return Path.Combine(RepoClientRoot(), "MIGRATION.md");
+        }
+
+        // mt5_grpc_client_csharp root (where the packed README.md / MIGRATION.md live).
+        private static string RepoClientRoot()
+        {
+            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        }
+
+        private static string ProjectPath()
+        {
+            return Path.Combine(
+                RepoClientRoot(), "src", "MetaTrader.Grpc.Client", "MetaTrader.Grpc.Client.csproj");
         }
     }
 }
