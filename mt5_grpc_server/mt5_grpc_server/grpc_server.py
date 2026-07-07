@@ -20,6 +20,7 @@ from mt5_grpc_proto import (
     symbols_pb2_grpc,
     terminal_pb2_grpc,
     trade_pb2_grpc,
+    trade_events_pb2_grpc,
 )
 from .imp import *
 from .logging_interceptor import VerboseLoggingInterceptor
@@ -98,9 +99,15 @@ def main():
     if args.verbose:
         interceptors.append(VerboseLoggingInterceptor())
 
-    # Create server with interceptors
+    # Create server with interceptors.
+    #
+    # A server-streaming RPC (TradeEventsService.SubscribeTradeTransactions)
+    # occupies one ThreadPoolExecutor worker for the entire life of the stream.
+    # The pool is sized to budget for concurrent long-lived subscriptions plus
+    # headroom for unary calls, so streams do not starve unary RPCs
+    # (plan Decision 4; FR-010, SC-007).
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10),
+        futures.ThreadPoolExecutor(max_workers=32),
         interceptors=interceptors
     )
 
@@ -121,6 +128,7 @@ def main():
     deal_pb2_grpc.add_TradeHistoryServiceServicer_to_server(TradeHistoryServiceImpl(), server)
     order_pb2_grpc.add_OrdersServiceServicer_to_server(OrdersServiceImpl(), server)
     position_pb2_grpc.add_PositionsServiceServicer_to_server(PositionsServiceImpl(), server)
+    trade_events_pb2_grpc.add_TradeEventsServiceServicer_to_server(TradeEventsServiceImpl(), server)
 
     # Add server port based on security option
     if args.secure:

@@ -35,6 +35,7 @@ $expectedDeps = @{
     "Google.Protobuf"                           = "3.29.3"
     "Grpc.Core.Api"                             = "2.71.0"
     "Grpc.Net.Client"                           = "2.71.0"
+    "Microsoft.Bcl.AsyncInterfaces"             = "9.0.0"
     "Microsoft.Extensions.Logging.Abstractions" = "9.0.0"
 }
 

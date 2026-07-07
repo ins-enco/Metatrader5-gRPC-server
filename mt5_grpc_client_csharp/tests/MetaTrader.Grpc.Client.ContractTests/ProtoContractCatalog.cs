@@ -24,5 +24,13 @@ namespace MetaTrader.Grpc.Client.ContractTests
                 ["HistoryOrdersService"] = new[] { "GetHistoryOrders", "GetHistoryOrdersTotal" },
                 ["TradeHistoryService"] = new[] { "GetDeals" }
             };
+
+        // Server-streaming services (the first is TradeEventsService). Kept separate
+        // from UnaryServices so the unary contract counts remain unchanged (SC-005).
+        public static IReadOnlyDictionary<string, string[]> StreamingServices { get; } =
+            new Dictionary<string, string[]>
+            {
+                ["TradeEventsService"] = new[] { "SubscribeTradeTransactions" }
+            };
     }
 }

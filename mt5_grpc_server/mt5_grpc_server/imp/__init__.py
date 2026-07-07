@@ -14,3 +14,4 @@ from .symbol_info_tick import *
 from .symbols import *
 from .terminal_info import *
 from .trade import *
+from .trade_events import *

@@ -34,8 +34,8 @@ Multi-language repo (per plan.md):
 
 **Purpose**: Bring the canonical contract into the repo and add the one new client dependency needed to compile the streaming surface.
 
-- [ ] T001 Copy the designed contract into the canonical proto directory: `cp specs/005-trade-transaction-events/contracts/trade_events.proto protos/trade_events.proto` (verify it `import "common.proto";`, package `metatrader.v1`, field numbers frozen starting at 1)
-- [ ] T002 [P] Add `<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.0" />` to `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj` so `IAsyncEnumerable<T>` is available on `netstandard2.0` (do NOT change target framework)
+- [x] T001 Copy the designed contract into the canonical proto directory: `cp specs/005-trade-transaction-events/contracts/trade_events.proto protos/trade_events.proto` (verify it `import "common.proto";`, package `metatrader.v1`, field numbers frozen starting at 1)
+- [x] T002 [P] Add `<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.0" />` to `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj` so `IAsyncEnumerable<T>` is available on `netstandard2.0` (do NOT change target framework)
 
 ---
 
@@ -45,14 +45,14 @@ Multi-language repo (per plan.md):
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 Regenerate Python gRPC bindings by running `./generate_proto.sh` from repo root (produces `mt5_grpc_proto/mt5_grpc_proto/trade_events_pb2.py` and `trade_events_pb2_grpc.py`; do not hand-edit generated files)
-- [ ] T004 Export the new module from `mt5_grpc_proto/mt5_grpc_proto/__init__.py` by adding `from .trade_events_pb2 import *` and `from .trade_events_pb2_grpc import *`
-- [ ] T005 [P] Regenerate and verify C# bindings by running `pwsh mt5_grpc_client_csharp/scripts/check-generated.ps1` (confirm a `TradeEventsService.TradeEventsServiceClient` with a `ServerStream`-style `SubscribeTradeTransactions` is emitted, per the `StreamingFixtureService` pattern)
-- [ ] T006 Create servicer skeleton `TradeEventsServiceImpl(trade_events_pb2_grpc.TradeEventsServiceServicer)` in `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py` with a `SubscribeTradeTransactions(self, request, context)` generator stub (body filled per-story) and imports of `MetaTrader5 as mt5`, the pb2 modules, and the shared `common_pb2.Error`
-- [ ] T007 Add `from .trade_events import *` to `mt5_grpc_server/mt5_grpc_server/imp/__init__.py`
-- [ ] T008 Register the servicer and size the worker pool in `mt5_grpc_server/mt5_grpc_server/grpc_server.py`: import `trade_events_pb2_grpc`, call `trade_events_pb2_grpc.add_TradeEventsServiceServicer_to_server(TradeEventsServiceImpl(), server)`, and raise `ThreadPoolExecutor(max_workers=...)` from 10 to 32 (budget for concurrent long-lived streams + unary headroom, per research Decision 4) with an explanatory comment
-- [ ] T009 [P] Expose the generated client on the shared client: add a `TradeEventsService.TradeEventsServiceClient TradeEvents` property in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.cs` (mirroring how existing service clients are exposed)
-- [ ] T010 Create `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcStreamingInvoker.cs` — a streaming counterpart to `Mt5GrpcUnaryInvoker` that wraps an `AsyncServerStreamingCall`, maps faults through `Mt5GrpcError`/`Mt5GrpcErrorMapper`, and logs stream faults like the unary path (no method body per-stream yet; provides the shared invoke helper)
+- [x] T003 Regenerate Python gRPC bindings by running `./generate_proto.sh` from repo root (produces `mt5_grpc_proto/mt5_grpc_proto/trade_events_pb2.py` and `trade_events_pb2_grpc.py`; do not hand-edit generated files)
+- [x] T004 Export the new module from `mt5_grpc_proto/mt5_grpc_proto/__init__.py` by adding `from .trade_events_pb2 import *` and `from .trade_events_pb2_grpc import *`
+- [x] T005 [P] Regenerate and verify C# bindings by running `pwsh mt5_grpc_client_csharp/scripts/check-generated.ps1` (confirm a `TradeEventsService.TradeEventsServiceClient` with a `ServerStream`-style `SubscribeTradeTransactions` is emitted, per the `StreamingFixtureService` pattern)
+- [x] T006 Create servicer skeleton `TradeEventsServiceImpl(trade_events_pb2_grpc.TradeEventsServiceServicer)` in `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py` with a `SubscribeTradeTransactions(self, request, context)` generator stub (body filled per-story) and imports of `MetaTrader5 as mt5`, the pb2 modules, and the shared `common_pb2.Error`
+- [x] T007 Add `from .trade_events import *` to `mt5_grpc_server/mt5_grpc_server/imp/__init__.py`
+- [x] T008 Register the servicer and size the worker pool in `mt5_grpc_server/mt5_grpc_server/grpc_server.py`: import `trade_events_pb2_grpc`, call `trade_events_pb2_grpc.add_TradeEventsServiceServicer_to_server(TradeEventsServiceImpl(), server)`, and raise `ThreadPoolExecutor(max_workers=...)` from 10 to 32 (budget for concurrent long-lived streams + unary headroom, per research Decision 4) with an explanatory comment
+- [x] T009 [P] Expose the generated client on the shared client: add a `TradeEventsService.TradeEventsServiceClient TradeEvents` property in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.cs` (mirroring how existing service clients are exposed)
+- [x] T010 Create `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcStreamingInvoker.cs` — a streaming counterpart to `Mt5GrpcUnaryInvoker` that wraps an `AsyncServerStreamingCall`, maps faults through `Mt5GrpcError`/`Mt5GrpcErrorMapper`, and logs stream faults like the unary path (no method body per-stream yet; provides the shared invoke helper)
 
 **Checkpoint**: Contract exists in both languages, server registers an (empty) streaming RPC, client can reach it — user stories can now begin.
 
@@ -66,21 +66,21 @@ Multi-language repo (per plan.md):
 
 ### Tests for User Story 1 ⚠️ (write first, ensure they FAIL before implementation)
 
-- [ ] T011 [P] [US1] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: feed a mock `history_deals_get` a sequence of 100+ deals across bursts including same-millisecond `time_msc` ties; assert each is delivered exactly once, in `(time_msc, ticket)` ascending order, zero duplicates/omissions (SC-003, FR-006)
-- [ ] T012 [P] [US1] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: when the terminal is not initialized or `history_deals_get` returns `None` (persistent failure), the stream emits one final `TradeTransactionEvent` with `error` populated from `mt5.last_error()` and then ends (FR-009, edge cases)
-- [ ] T013 [P] [US1] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: with no new deals, the subscription yields no events and stays open/healthy across multiple poll cycles (US1 acceptance #3)
-- [ ] T014 [P] [US1] C# test in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeEventsStreamingTests.cs`: `await foreach` over `SubscribeTradeTransactionsAsync(...)` yields typed `TradeTransactionEvent` items 1:1 with an in-process/fake server stream, and the generated streaming surface exists (as `StreamingFixtureTests` asserts for the fixture)
+- [x] T011 [P] [US1] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: feed a mock `history_deals_get` a sequence of 100+ deals across bursts including same-millisecond `time_msc` ties; assert each is delivered exactly once, in `(time_msc, ticket)` ascending order, zero duplicates/omissions (SC-003, FR-006)
+- [x] T012 [P] [US1] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: when the terminal is not initialized or `history_deals_get` returns `None` (persistent failure), the stream emits one final `TradeTransactionEvent` with `error` populated from `mt5.last_error()` and then ends (FR-009, edge cases)
+- [x] T013 [P] [US1] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: with no new deals, the subscription yields no events and stays open/healthy across multiple poll cycles (US1 acceptance #3)
+- [x] T014 [P] [US1] C# test in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeEventsStreamingTests.cs`: `await foreach` over `SubscribeTradeTransactionsAsync(...)` yields typed `TradeTransactionEvent` items 1:1 with an in-process/fake server stream, and the generated streaming surface exists (as `StreamingFixtureTests` asserts for the fixture)
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement the poll loop with a `(time_msc, ticket)` watermark: each iteration query `history_deals_get(from=floor(watermark_time_msc/1000), to=now)`, sort candidates by `(time_msc, ticket)` ascending, skip any `(time_msc, ticket) <= watermark`, emit the remainder, advance the watermark (exactly-once + ordering, FR-006, Decision 3)
-- [ ] T016 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, map each MT5 deal to a `TradeTransactionEvent` (deal_ticket, order→order_ticket, position_id→position_ticket, symbol, volume, price, profit, time_msc, verbatim `type`, verbatim `entry`) per data-model.md (FR-002, FR-003)
-- [ ] T017 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, resolve poll cadence (unset → 1000 ms; `< 200` → clamp up to 200 ms) and `sleep(cadence)` between polls (FR-007)
-- [ ] T018 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, emit a terminal in-band `Error` frame from `mt5.last_error()` on terminal/persistent lookup failure (retry a transient single-poll failure within the cadence before escalating), then end the stream (FR-009, Decision 6)
-- [ ] T019 [US1] Implement the core `IAsyncEnumerable<TradeTransactionEvent> SubscribeTradeTransactionsAsync(SubscribeTradeTransactionsRequest request, DateTime? deadline, CancellationToken ct)` in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeEvents.cs`, wrapping the generated `AsyncServerStreamingCall` via `Mt5GrpcStreamingInvoker` and `yield return`-ing each message (1:1 with the server stream; primary surface, FR-011)
-- [ ] T020 [US1] Add the `event`-style convenience wrapper in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeEvents.cs` — a subscription helper exposing `event EventHandler<TradeTransactionEvent>` that drives the async sequence on a background task, following the library's `Mt5GrpcResult`/`Mt5GrpcError` conventions (convenience surface over the sequence, FR-011)
-- [ ] T021 [US1] Register a `TradeEventsService` (streaming) entry in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/ProtoContractCatalog.cs` so the generated-surface contract tests cover the new service
-- [ ] T022 [US1] Ensure bounded logging without secrets/credentials on the streaming path in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcStreamingInvoker.cs` (mirror the unary invoker's logging discipline)
+- [x] T015 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement the poll loop with a `(time_msc, ticket)` watermark: each iteration query `history_deals_get(from=floor(watermark_time_msc/1000), to=now)`, sort candidates by `(time_msc, ticket)` ascending, skip any `(time_msc, ticket) <= watermark`, emit the remainder, advance the watermark (exactly-once + ordering, FR-006, Decision 3)
+- [x] T016 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, map each MT5 deal to a `TradeTransactionEvent` (deal_ticket, order→order_ticket, position_id→position_ticket, symbol, volume, price, profit, time_msc, verbatim `type`, verbatim `entry`) per data-model.md (FR-002, FR-003)
+- [x] T017 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, resolve poll cadence (unset → 1000 ms; `< 200` → clamp up to 200 ms) and `sleep(cadence)` between polls (FR-007)
+- [x] T018 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, emit a terminal in-band `Error` frame from `mt5.last_error()` on terminal/persistent lookup failure (retry a transient single-poll failure within the cadence before escalating), then end the stream (FR-009, Decision 6)
+- [x] T019 [US1] Implement the core `IAsyncEnumerable<TradeTransactionEvent> SubscribeTradeTransactionsAsync(SubscribeTradeTransactionsRequest request, DateTime? deadline, CancellationToken ct)` in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeEvents.cs`, wrapping the generated `AsyncServerStreamingCall` via `Mt5GrpcStreamingInvoker` and `yield return`-ing each message (1:1 with the server stream; primary surface, FR-011)
+- [x] T020 [US1] Add the `event`-style convenience wrapper in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeEvents.cs` — a subscription helper exposing `event EventHandler<TradeTransactionEvent>` that drives the async sequence on a background task, following the library's `Mt5GrpcResult`/`Mt5GrpcError` conventions (convenience surface over the sequence, FR-011)
+- [x] T021 [US1] Register a `TradeEventsService` (streaming) entry in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/ProtoContractCatalog.cs` so the generated-surface contract tests cover the new service
+- [x] T022 [US1] Ensure bounded logging without secrets/credentials on the streaming path in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcStreamingInvoker.cs` (mirror the unary invoker's logging discipline)
 
 **Checkpoint**: Live trade transactions stream end-to-end, exactly-once and ordered, over both the `IAsyncEnumerable` and `event` surfaces. This is the MVP.
 
@@ -94,13 +94,13 @@ Multi-language repo (per plan.md):
 
 ### Tests for User Story 2 ⚠️ (write first, ensure they FAIL before implementation)
 
-- [ ] T023 [P] [US2] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: with default (unset/0) `from_time_msc` on an account that already has historical deals, zero historical deals are delivered — only deals after subscription start (SC-002, FR-005)
-- [ ] T024 [P] [US2] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: with an explicit past `from_time_msc`, deals from that time forward are backfilled once in `(time_msc, ticket)` order, followed by live deals with no gap/duplicate (US2 acceptance #2)
-- [ ] T025 [P] [US2] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: a `from_time_msc` older than `now − 7 days` is clamped forward to the 7-day cap (FR-004)
+- [x] T023 [P] [US2] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: with default (unset/0) `from_time_msc` on an account that already has historical deals, zero historical deals are delivered — only deals after subscription start (SC-002, FR-005)
+- [x] T024 [P] [US2] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: with an explicit past `from_time_msc`, deals from that time forward are backfilled once in `(time_msc, ticket)` order, followed by live deals with no gap/duplicate (US2 acceptance #2)
+- [x] T025 [P] [US2] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: a `from_time_msc` older than `now − 7 days` is clamped forward to the 7-day cap (FR-004)
 
 ### Implementation for User Story 2
 
-- [ ] T026 [US2] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement start-point resolution at stream open — `start = (from_time_msc unset or 0) ? now_ms : max(from_time_msc, now_ms − 7*24*3600*1000)` — and initialize the watermark from `start` so the first poll backfills (or not) correctly (FR-004, FR-005, Decision 5)
+- [x] T026 [US2] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement start-point resolution at stream open — `start = (from_time_msc unset or 0) ? now_ms : max(from_time_msc, now_ms − 7*24*3600*1000)` — and initialize the watermark from `start` so the first poll backfills (or not) correctly (FR-004, FR-005, Decision 5)
 
 **Checkpoint**: US1 + US2 both work independently — live streaming with a controlled, bounded start point.
 
@@ -114,14 +114,14 @@ Multi-language repo (per plan.md):
 
 ### Tests for User Story 3 ⚠️ (write first, ensure they FAIL before implementation)
 
-- [ ] T027 [P] [US3] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: simulating `context.is_active()` becoming false (client cancel/disconnect) stops the poll loop within one cadence and performs no further `history_deals_get` calls (SC-004, FR-008)
-- [ ] T028 [P] [US3] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: resuming a new subscription with `from_time_msc` = the last received transaction's `time_msc` re-fetches the boundary second but the `(time_msc, ticket)` filter drops the already-seen deal — no gap, no duplicate (US3 acceptance #2, Decision 3)
-- [ ] T029 [P] [US3] C# test in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeEventsStreamingTests.cs`: cancelling the `CancellationToken` flows through call options and ends `await foreach`; the `event` wrapper signals completion on normal end and surfaces a mapped `Mt5GrpcError` on fault so a consumer can resubscribe
+- [x] T027 [P] [US3] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: simulating `context.is_active()` becoming false (client cancel/disconnect) stops the poll loop within one cadence and performs no further `history_deals_get` calls (SC-004, FR-008)
+- [x] T028 [P] [US3] Python test in `mt5_grpc_server/tests/test_trade_events_stream.py`: resuming a new subscription with `from_time_msc` = the last received transaction's `time_msc` re-fetches the boundary second but the `(time_msc, ticket)` filter drops the already-seen deal — no gap, no duplicate (US3 acceptance #2, Decision 3)
+- [x] T029 [P] [US3] C# test in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeEventsStreamingTests.cs`: cancelling the `CancellationToken` flows through call options and ends `await foreach`; the `event` wrapper signals completion on normal end and surfaces a mapped `Mt5GrpcError` on fault so a consumer can resubscribe
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, add cooperative cancellation — check `context.is_active()` (and catch cancellation) each loop iteration and exit promptly, releasing the executor worker (FR-008, SC-004)
-- [ ] T031 [US3] In `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeEvents.cs`, add completion/error signalling to the `event` wrapper (a completion callback plus a mapped-error callback) so consumers can detect stream end/fault and resubscribe from the last received `time_msc` (FR-014, User Story 3)
+- [x] T030 [US3] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, add cooperative cancellation — check `context.is_active()` (and catch cancellation) each loop iteration and exit promptly, releasing the executor worker (FR-008, SC-004)
+- [x] T031 [US3] In `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeEvents.cs`, add completion/error signalling to the `event` wrapper (a completion callback plus a mapped-error callback) so consumers can detect stream end/fault and resubscribe from the last received `time_msc` (FR-014, User Story 3)
 
 **Checkpoint**: All three user stories are independently functional — live streaming, bounded start, and clean cancel/resume.
 
@@ -131,12 +131,12 @@ Multi-language repo (per plan.md):
 
 **Purpose**: Coordinated packaging, regression verification, and docs.
 
-- [ ] T032 Coordinated backward-compatible **minor** version bump for `mt5_grpc_proto`, `mt5_grpc_server`, and `MetaTrader.Grpc.Client` (use `bump_version.py` where applicable); update each `CHANGELOG.md`
-- [ ] T033 Refresh C# package metadata in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj`: `ProtoContractIdentity`, `TestedServerVersionRange`, and `PackageReleaseNotes` for the new streaming service
-- [ ] T034 [P] Verify generated bindings match sources with no drift by running `pwsh mt5_grpc_client_csharp/scripts/check-generated.ps1` (C#) and re-running `./generate_proto.sh` (Python) and confirming a clean git diff on generated files
-- [ ] T035 Run full regression suites and confirm zero regressions (SC-005, FR-012): `python -m pytest mt5_grpc_server/tests -v` and `dotnet test mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln`
-- [ ] T036 [P] Update documentation with a `SubscribeTradeTransactions` usage example (`await foreach` + `event` wrapper) and note the additive/backward-compatible contract change; keep examples in sync with `DocumentationAccuracyTests`
-- [ ] T037 Run the quickstart.md verification path end-to-end and confirm the Definition-of-Done traceability table (SC-001…SC-007) is satisfied
+- [x] T032 Coordinated backward-compatible **minor** version bump for `mt5_grpc_proto`, `mt5_grpc_server`, and `MetaTrader.Grpc.Client` (use `bump_version.py` where applicable); update each `CHANGELOG.md`
+- [x] T033 Refresh C# package metadata in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj`: `ProtoContractIdentity`, `TestedServerVersionRange`, and `PackageReleaseNotes` for the new streaming service
+- [x] T034 [P] Verify generated bindings match sources with no drift by running `pwsh mt5_grpc_client_csharp/scripts/check-generated.ps1` (C#) and re-running `./generate_proto.sh` (Python) and confirming a clean git diff on generated files
+- [x] T035 Run full regression suites and confirm zero regressions (SC-005, FR-012): `python -m pytest mt5_grpc_server/tests -v` and `dotnet test mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln`
+- [x] T036 [P] Update documentation with a `SubscribeTradeTransactions` usage example (`await foreach` + `event` wrapper) and note the additive/backward-compatible contract change; keep examples in sync with `DocumentationAccuracyTests`
+- [x] T037 Run the quickstart.md verification path end-to-end and confirm the Definition-of-Done traceability table (SC-001…SC-007) is satisfied
 
 ---
 

@@ -6,8 +6,12 @@ clients for advanced callers and a thin wrapper that returns typed
 `Mt5GrpcResult<T>` values for convenience calls.
 
 Package metadata uses independent client SemVer. The current package version is
-`0.2.0`, with proto contract identity `protos-003-csharp-request-enums` and a
-tested server range of `[0.2.0,1.0.0)`.
+`0.3.0`, with proto contract identity `protos-005-trade-transaction-events` and a
+tested server range of `[0.3.0,1.0.0)`.
+
+> **0.3.0 (additive)**: adds `TradeEventsService.SubscribeTradeTransactions`, the
+> first server-streaming RPC. See [Trade transaction events](#trade-transaction-events).
+> No existing RPC, message, field, or field number changed — fully backward compatible.
 
 > **0.2.0 is a breaking change**: request fields that MT5 treats as enums are now
 > native enum types, so raw-integer assignments no longer compile. See
@@ -63,7 +67,7 @@ token is committed — the credentials are read from the environment:
 ```
 
 Restore resolves the package **and** all of its runtime dependencies
-(Google.Protobuf, Grpc.Core.Api, Grpc.Net.Client,
+(Google.Protobuf, Grpc.Core.Api, Grpc.Net.Client, Microsoft.Bcl.AsyncInterfaces,
 Microsoft.Extensions.Logging.Abstractions) — you add no other packages by hand,
 and `Grpc.Tools` never enters your project. Then use the client as shown in
 [Wrapper Results](#wrapper-results).
@@ -237,18 +241,50 @@ generated clients in the same environment. The unit performance budget test
 keeps wrapper result mapping bounded, and full benchmark numbers should be used
 for release decisions.
 
-## Streaming
+## Trade transaction events
 
-Current MT5 proto services are unary-only. The package does not document or
-invent current MT5 streaming operations. If future proto contracts add server,
-client, or bidirectional streaming RPCs, Grpc.Tools will generate typed streaming
-client methods and tests must validate cancellation, disposal, error propagation,
-and runtime platform support.
+`TradeEventsService.SubscribeTradeTransactions` (added in `0.3.0`) is the first
+server-streaming RPC. It emits one `TradeTransactionEvent` per newly added deal on
+the connected account as it is observed — exactly once, in chronological order,
+with no duplicates. Delivery is emulated by server-side polling of the MT5 deals
+history (there is no push callback in the MT5 Python API), so "real-time" means
+"within one poll interval" (default 1000 ms; server floor 200 ms). A subscription
+starts at "now" by default; supply `FromTimeMsc` to backfill from a past point
+(capped to a 7-day lookback).
+
+**Primary surface — `IAsyncEnumerable<TradeTransactionEvent>` (1:1 with the stream):**
+
+```csharp
+using var client = Mt5GrpcClientFactory.Create("https://localhost:50051");
+using var cts = new CancellationTokenSource();
+
+var request = new SubscribeTradeTransactionsRequest(); // start now, default cadence
+await foreach (var evt in client.SubscribeTradeTransactionsAsync(request, cancellationToken: cts.Token))
+{
+    Console.WriteLine($"deal {evt.DealTicket} {evt.Symbol} vol={evt.Volume} @ {evt.Price}");
+}
+// A terminal MT5 failure throws Mt5GrpcClientException whose .Error carries the mapped error.
+```
+
+**Convenience surface — C# `event` wrapper (`TradeTransactionSubscription`):**
+
+```csharp
+var subscription = client.SubscribeTradeTransactions(new SubscribeTradeTransactionsRequest());
+subscription.TransactionReceived += (_, evt) => Console.WriteLine($"deal {evt.DealTicket}");
+subscription.Faulted += (_, error) => Console.WriteLine($"faulted: {error.Message}"); // resubscribe from last time
+subscription.Completed += (_, _) => Console.WriteLine("stream ended");
+subscription.Start();
+// ...
+subscription.Stop();   // graceful cancellation; releases the server-side worker
+```
+
+On disconnect, resume by starting a new subscription with `FromTimeMsc` set to the
+last received `TimeMsc`; the boundary deal is de-duplicated so there is no gap and
+no duplicate.
 
 .NET Framework 4.8 consumers can reference the `netstandard2.0` package, but
-gRPC over HTTP/2 requires TLS and `WinHttpHandler`. Client and bidirectional
-streaming support depends on the Windows host and is not guaranteed on all .NET
-Framework deployments.
+gRPC over HTTP/2 requires TLS and `WinHttpHandler`. Server-streaming support
+depends on the Windows host and is not guaranteed on all .NET Framework deployments.
 
 ## Publishing a new version (maintainers)
 

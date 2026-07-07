@@ -10,6 +10,7 @@ namespace MetaTrader.Grpc.Client
         private readonly GrpcChannel channel;
         private readonly bool ownsChannel;
         private readonly Mt5GrpcUnaryInvoker invoker;
+        private readonly Mt5GrpcStreamingInvoker streamingInvoker;
 
         internal Mt5GrpcClient(GrpcChannel channel, Mt5GrpcClientOptions options, bool ownsChannel)
         {
@@ -19,6 +20,7 @@ namespace MetaTrader.Grpc.Client
             var callOptions = new Mt5GrpcCallOptions(options.DefaultDeadline, options.DefaultHeaders);
             var logger = options.LoggerFactory?.CreateLogger<Mt5GrpcClient>();
             invoker = new Mt5GrpcUnaryInvoker(callOptions, logger);
+            streamingInvoker = new Mt5GrpcStreamingInvoker(callOptions, logger);
 
             MetaTrader = new MetaTraderService.MetaTraderServiceClient(channel);
             Initialize = new InitializeService.InitializeServiceClient(channel);
@@ -36,6 +38,7 @@ namespace MetaTrader.Grpc.Client
             Positions = new PositionsService.PositionsServiceClient(channel);
             HistoryOrders = new HistoryOrdersService.HistoryOrdersServiceClient(channel);
             TradeHistory = new TradeHistoryService.TradeHistoryServiceClient(channel);
+            TradeEvents = new TradeEventsService.TradeEventsServiceClient(channel);
         }
 
         public MetaTraderService.MetaTraderServiceClient MetaTrader { get; }
@@ -54,6 +57,7 @@ namespace MetaTrader.Grpc.Client
         public PositionsService.PositionsServiceClient Positions { get; }
         public HistoryOrdersService.HistoryOrdersServiceClient HistoryOrders { get; }
         public TradeHistoryService.TradeHistoryServiceClient TradeHistory { get; }
+        public TradeEventsService.TradeEventsServiceClient TradeEvents { get; }
 
         public void Dispose()
         {

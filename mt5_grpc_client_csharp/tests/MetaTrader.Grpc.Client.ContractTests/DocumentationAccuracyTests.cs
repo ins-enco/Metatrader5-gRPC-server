@@ -42,13 +42,18 @@ namespace MetaTrader.Grpc.Client.ContractTests
             Assert.Contains(serverRange, releaseNotes);
         }
 
+        // As of 0.3.0 the contract has its first server-streaming RPC
+        // (TradeEventsService.SubscribeTradeTransactions). The README must document
+        // it accurately and no longer claim the services are unary-only.
         [Fact]
-        public void Readme_states_current_mt5_services_are_unary_only()
+        public void Readme_documents_the_trade_events_streaming_rpc()
         {
             var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
             var readme = File.ReadAllText(Path.Combine(root, "README.md"));
 
-            Assert.Contains("Current MT5 proto services are unary-only", readme);
+            Assert.Contains("SubscribeTradeTransactions", readme);
+            Assert.Contains("server-streaming", readme);
+            Assert.DoesNotContain("Current MT5 proto services are unary-only", readme);
             Assert.DoesNotContain("current MT5 bidirectional streaming", readme);
         }
 
