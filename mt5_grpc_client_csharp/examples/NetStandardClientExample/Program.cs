@@ -73,7 +73,39 @@ internal static class Program
         _ = await client.GetSymbolInfoAsync(new SymbolInfoRequest { Symbol = symbol });
         _ = await client.GetSymbolInfoTickAsync(new SymbolInfoTickRequest { Symbol = symbol });
         _ = await client.CopyTicksFromAsync(new CopyTicksFromRequest { Symbol = symbol, Count = 10, Flags = 1 });
-        _ = await client.CheckOrderAsync(new OrderCheckRequest { TradeRequest = new TradeRequest { Symbol = symbol, Volume = 0.01 } });
-        _ = await client.SendOrderAsync(new OrderSendRequest { TradeRequest = new TradeRequest { Symbol = symbol, Volume = 0.01 } });
+
+        // Build the trade request with named MT5 values (0.2.0+): the compiler
+        // restricts each field to its valid option set and IntelliSense lists them.
+        var tradeRequest = new TradeRequest
+        {
+            Symbol = "EURUSD",
+            Volume = 0.01,
+            Action = ENUM_TRADE_REQUEST_ACTIONS.TradeActionDeal,
+            Type = ENUM_ORDER_TYPE.OrderTypeBuy,
+            TypeFilling = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
+            TypeTime = ENUM_ORDER_TYPE_TIME.OrderTimeGtc,
+        };
+
+        _ = await client.CheckOrderAsync(new OrderCheckRequest { TradeRequest = tradeRequest.Clone() });
+         var a  = await client.SendOrderAsync(new OrderSendRequest { TradeRequest = tradeRequest });
+
+        // Calculation requests share the ENUM_ORDER_TYPE named set (US2).
+        _ = await client.CalcMarginAsync(new OrderCalcMarginRequest
+        {
+            Action = ENUM_ORDER_TYPE.OrderTypeBuy,
+            Symbol = symbol,
+            Volume = 0.01,
+            Price = 1.0850,
+        });
+
+        // Profit calc expects Buy or Sell (documented; not compile-enforced).
+        _ = await client.CalcProfitAsync(new OrderCalcProfitRequest
+        {
+            Action = ENUM_ORDER_TYPE.OrderTypeSell,
+            Symbol = symbol,
+            Volume = 0.01,
+            PriceOpen = 1.0850,
+            PriceClose = 1.0800,
+        });
     }
 }

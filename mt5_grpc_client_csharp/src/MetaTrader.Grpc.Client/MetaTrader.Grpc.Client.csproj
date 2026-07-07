@@ -4,17 +4,17 @@
     <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
     <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
     <PackageId>MetaTrader.Grpc.Client</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>MetaTrader gRPC</Authors>
     <Company>MetaTrader gRPC</Company>
     <Description>C# client library for the MetaTrader 5 gRPC server contracts.</Description>
     <PackageTags>metatrader;mt5;grpc;protobuf;client</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <ProtoContractIdentity>protos-001-csharp-client-library</ProtoContractIdentity>
-    <TestedServerVersionRange>[0.1.0,1.0.0)</TestedServerVersionRange>
+    <ProtoContractIdentity>protos-003-csharp-request-enums</ProtoContractIdentity>
+    <TestedServerVersionRange>[0.2.0,1.0.0)</TestedServerVersionRange>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>Proto contract identity: protos-001-csharp-client-library. Tested server range: [0.1.0,1.0.0).</PackageReleaseNotes>
+    <PackageReleaseNotes>0.2.0 (breaking): request enum fields (TradeRequest.action/type/type_filling/type_time, OrderCalc{Margin,Profit}Request.action) are now native protobuf enums. Wire-compatible (varint); C# integer assignments must migrate to named values. See MIGRATION.md. Proto contract identity: protos-003-csharp-request-enums. Tested server range: [0.2.0,1.0.0).</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>

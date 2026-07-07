@@ -1,5 +1,9 @@
 import MetaTrader5 as mt5
-from mt5_grpc_proto.trade_pb2 import TradeResult, OrderSendResponse
+from mt5_grpc_proto.trade_pb2 import (
+    TradeResult,
+    OrderSendResponse,
+    TRADE_ACTION_UNSPECIFIED,
+)
 from mt5_grpc_proto.trade_pb2_grpc import OrderSendServiceServicer
 
 
@@ -11,6 +15,17 @@ class OrderSendServiceImpl(OrderSendServiceServicer):
         """
         # Initialize the response
         response = OrderSendResponse()
+
+        # Reject an unset / TRADE_ACTION_UNSPECIFIED (0) action rather than
+        # executing it. MT5 defines no action 0, so this is not a valid order;
+        # placing one would be unsafe (FR-014, SC-009).
+        if request.trade_request.action == TRADE_ACTION_UNSPECIFIED:
+            response.error.code = -1
+            response.error.message = (
+                "Trade request action is unset or TRADE_ACTION_UNSPECIFIED (0); "
+                "set an explicit MT5 trade action (e.g. TRADE_ACTION_DEAL)."
+            )
+            return response
 
         try:
             # Create MT5 request structure

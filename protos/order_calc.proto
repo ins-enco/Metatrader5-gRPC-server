@@ -6,7 +6,7 @@ import "common.proto";
 
 // Request for calculating margin
 message OrderCalcMarginRequest {
-  int32 action = 1;      // Order type (ORDER_TYPE_BUY or ORDER_TYPE_SELL)
+  ENUM_ORDER_TYPE action = 1;  // Order type (ORDER_TYPE_BUY or ORDER_TYPE_SELL)
   string symbol = 2;     // Symbol name
   double volume = 3;     // Volume
   double price = 4;      // Open price
@@ -20,7 +20,7 @@ message OrderCalcMarginResponse {
 
 // Request for calculating profit
 message OrderCalcProfitRequest {
-  int32 action = 1;      // Order type (ORDER_TYPE_BUY or ORDER_TYPE_SELL)
+  ENUM_ORDER_TYPE action = 1;  // Order type (ORDER_TYPE_BUY or ORDER_TYPE_SELL)
   string symbol = 2;     // Symbol name
   double volume = 3;     // Volume
   double price_open = 4; // Open price

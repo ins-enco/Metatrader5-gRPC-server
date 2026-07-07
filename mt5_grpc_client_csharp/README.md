@@ -5,9 +5,13 @@ the repository's `protos/*.proto` contracts. It exposes the generated gRPC
 clients for advanced callers and a thin wrapper that returns typed
 `Mt5GrpcResult<T>` values for convenience calls.
 
-Package metadata uses independent client SemVer. The initial package version is
-`0.1.0`, with proto contract identity `protos-001-csharp-client-library` and a
-tested server range of `[0.1.0,1.0.0)`.
+Package metadata uses independent client SemVer. The current package version is
+`0.2.0`, with proto contract identity `protos-003-csharp-request-enums` and a
+tested server range of `[0.2.0,1.0.0)`.
+
+> **0.2.0 is a breaking change**: request fields that MT5 treats as enums are now
+> native enum types, so raw-integer assignments no longer compile. See
+> [Request enum fields](#request-enum-fields) and [MIGRATION.md](./MIGRATION.md).
 
 ## Build
 
@@ -33,6 +37,44 @@ The generated namespace comes from the current proto package and is
 `Metatrader.V1`. Generated clients preserve protobuf binary communication,
 optional field presence, repeated value ordering, timestamps, 64-bit identifiers,
 and numeric market values.
+
+## Request enum fields
+
+As of `0.2.0`, the request fields MT5 treats as enumerations are **native enum
+types** (in `Metatrader.V1`), so the compiler restricts each field to its valid
+option set and the editor lists the choices:
+
+```csharp
+using Metatrader.V1;
+
+var request = new OrderSendRequest
+{
+    TradeRequest = new TradeRequest
+    {
+        Symbol      = "EURUSD",
+        Volume      = 0.10,
+        Action      = ENUM_TRADE_REQUEST_ACTIONS.TradeActionDeal,
+        Type        = ENUM_ORDER_TYPE.OrderTypeBuy,
+        TypeFilling = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
+        TypeTime    = ENUM_ORDER_TYPE_TIME.OrderTimeGtc,
+    }
+};
+```
+
+The margin and profit calculation requests share the same `ENUM_ORDER_TYPE`:
+
+```csharp
+var margin = await client.CalcMarginAsync(new OrderCalcMarginRequest
+{
+    Action = ENUM_ORDER_TYPE.OrderTypeBuy, Symbol = "EURUSD", Volume = 0.10, Price = 1.0850,
+});
+```
+
+The protobuf compiler renders MT5's `TRADE_ACTION_DEAL`-style names in PascalCase
+(`TradeActionDeal`); the wire name is preserved for cross-referencing MQL5 docs.
+Leaving `Action` unset is `TradeActionUnspecified` (0), which the server rejects
+with a structured error — always set an explicit action. Upgrading from `0.1.x`?
+See [MIGRATION.md](./MIGRATION.md).
 
 ## Wrapper Results
 
