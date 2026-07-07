@@ -13,6 +13,89 @@ tested server range of `[0.2.0,1.0.0)`.
 > native enum types, so raw-integer assignments no longer compile. See
 > [Request enum fields](#request-enum-fields) and [MIGRATION.md](./MIGRATION.md).
 
+## Install from GitHub Packages
+
+The package is published to the organization's GitHub Packages NuGet registry at
+`https://nuget.pkg.github.com/ins-enco/index.json`. Consuming it is the supported
+way to use the client from another project — you do **not** need a checkout of this
+repository, and no protobuf/gRPC code generation runs in your project.
+
+### 1. Authenticate
+
+GitHub Packages requires authentication for NuGet restore. Create a GitHub
+Personal Access Token (classic) with at least the **`read:packages`** scope and
+expose it (plus your GitHub username) to your shell:
+
+```powershell
+$env:GITHUB_ACTOR = "your-github-username"
+$env:GITHUB_PACKAGES_TOKEN = "ghp_xxx"   # PAT with read:packages
+```
+
+### 2. Add the feed source
+
+Add a `nuget.config` next to your solution (see
+[`examples/nuget.config`](./examples/nuget.config) for a ready-to-copy file). No
+token is committed — the credentials are read from the environment:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+    <add key="github-ins-enco" value="https://nuget.pkg.github.com/ins-enco/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <github-ins-enco>
+      <add key="Username" value="%GITHUB_ACTOR%" />
+      <add key="ClearTextPassword" value="%GITHUB_PACKAGES_TOKEN%" />
+    </github-ins-enco>
+  </packageSourceCredentials>
+</configuration>
+```
+
+`nuget.org` is included so the client's runtime dependencies resolve automatically.
+
+### 3. Add the single reference
+
+```xml
+<PackageReference Include="MetaTrader.Grpc.Client" Version="0.2.0" />
+```
+
+Restore resolves the package **and** all of its runtime dependencies
+(Google.Protobuf, Grpc.Core.Api, Grpc.Net.Client,
+Microsoft.Extensions.Logging.Abstractions) — you add no other packages by hand,
+and `Grpc.Tools` never enters your project. Then use the client as shown in
+[Wrapper Results](#wrapper-results).
+
+### Stable vs. pre-release versions
+
+Production versions use plain SemVer (`0.2.0`). Pre-release builds carry a SemVer
+pre-release suffix (for example `0.3.0-preview.1`). NuGet **excludes pre-release
+versions by default**, so a normal restore only picks stable versions; opt in
+explicitly (e.g. `dotnet add package MetaTrader.Grpc.Client --prerelease`, or a
+floating `0.3.0-*` version) to consume a pre-release.
+
+### If restore fails
+
+- **401 / authentication** — the token is missing or lacks `read:packages`.
+  Re-check step 1. This is a clear, expected failure, **not** a partial or
+  silently broken restore.
+- **Network / offline** — the feed is unreachable; restore fails cleanly rather
+  than producing a half-working client. Reconnect and retry.
+- **Unsupported target framework** — a consumer targeting a framework outside the
+  supported set fails restore/build clearly rather than producing a subtly
+  non-working client.
+
+.NET Framework 4.8 consumers reference the same `netstandard2.0` package but must
+satisfy the transport prerequisite below.
+
+### .NET Framework 4.8 transport prerequisite
+
+gRPC-over-HTTP/2 on net48 requires TLS and `System.Net.Http.WinHttpHandler` on the
+channel. See the `examples/NetFramework48ClientExample` project for the exact
+`WinHttpHandler` setup.
+
 ## Build
 
 ```powershell
@@ -166,6 +249,44 @@ and runtime platform support.
 gRPC over HTTP/2 requires TLS and `WinHttpHandler`. Client and bidirectional
 streaming support depends on the Windows host and is not guaranteed on all .NET
 Framework deployments.
+
+## Publishing a new version (maintainers)
+
+Publishing is automated and tag-triggered — there is no manual publish step and no
+publish credential on a maintainer's machine (credentials live only in CI as the
+built-in `GITHUB_TOKEN`).
+
+1. **Bump `<Version>`** in
+   [MetaTrader.Grpc.Client.csproj](./src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj).
+   For a breaking change also update `<ProtoContractIdentity>` /
+   `<TestedServerVersionRange>`, this README, `CHANGELOG.md`, `MIGRATION.md`, and
+   `<PackageReleaseNotes>` (which must quote the current contract identity and
+   server range — the drift-guard test enforces this).
+2. **Verify locally**:
+
+   ```powershell
+   dotnet restore mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln
+   dotnet build   mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release
+   dotnet test    mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release
+   mt5_grpc_client_csharp/scripts/check-generated.ps1        -Configuration Release
+   mt5_grpc_client_csharp/scripts/check-package-metadata.ps1 -Configuration Release
+   mt5_grpc_client_csharp/scripts/verify-consumer-restore.ps1 -Configuration Release
+   ```
+
+3. **Tag and push** — the tag version must equal `<Version>`:
+
+   ```powershell
+   git tag csharp-client-v0.2.0
+   git push origin csharp-client-v0.2.0
+   ```
+
+The client-scoped [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)
+workflow (tags `csharp-client-v*`) then builds, tests, runs the drift and metadata
+gates, checks the tag matches `<Version>`, packs deterministically
+(`ContinuousIntegrationBuild=true`), and pushes to GitHub Packages with
+`GITHUB_TOKEN`. Publishing a version that already exists is rejected (HTTP 409) and
+fails the job — published versions are immutable; ship a correction as a new
+version. This client tag is independent of the server's `v*.*.*` Docker release.
 
 ## Drift Check
 

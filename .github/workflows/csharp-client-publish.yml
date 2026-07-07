@@ -1,0 +1,73 @@
+name: csharp-client-publish
+
+# Client-scoped, tag-triggered publish of MetaTrader.Grpc.Client to the
+# organization's GitHub Packages NuGet registry. Independent of the server's
+# v*.*.* Docker release (docker-ghcr.yml). See
+# specs/004-client-package-distribution/ (Contract C).
+#
+# Trigger:
+#   git tag csharp-client-v<X.Y.Z>            # stable
+#   git tag csharp-client-v<X.Y.Z>-<label>    # pre-release
+#   git push origin <tag>
+on:
+  push:
+    tags:
+      - "csharp-client-v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      OWNER: ins-enco
+      FEED: https://nuget.pkg.github.com/ins-enco/index.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      # Fail fast if the tag version disagrees with the csproj <Version> (T014),
+      # so a package whose number differs from its tag is never published.
+      - name: Guard tag == csproj <Version>
+        shell: pwsh
+        run: mt5_grpc_client_csharp/scripts/check-tag-version.ps1 -Tag "${{ github.ref_name }}"
+
+      - name: Restore
+        run: dotnet restore mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln
+
+      # ContinuousIntegrationBuild is set at compile time so the assemblies (and
+      # thus the packed .nupkg) are a deterministic function of source (SC-005).
+      - name: Build (Release)
+        run: dotnet build mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release --no-restore -p:ContinuousIntegrationBuild=true
+
+      - name: Test
+        run: dotnet test mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln -c Release --no-build
+
+      - name: Generated-binding drift gate
+        shell: pwsh
+        run: mt5_grpc_client_csharp/scripts/check-generated.ps1 -Configuration Release
+
+      - name: Package metadata gate
+        shell: pwsh
+        run: mt5_grpc_client_csharp/scripts/check-package-metadata.ps1 -Configuration Release
+
+      # Deterministic pack: ContinuousIntegrationBuild makes the .nupkg a function
+      # of source only, so a clean rebuild of this revision is equivalent (SC-005).
+      - name: Pack
+        run: >
+          dotnet pack mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj
+          -c Release --no-build -p:ContinuousIntegrationBuild=true
+          -o ${{ runner.temp }}/nupkg
+
+      # Push WITHOUT --skip-duplicate: re-publishing an existing version returns
+      # HTTP 409 and fails the job, keeping every version immutable (FR-008, SC-007).
+      - name: Publish to GitHub Packages
+        run: >
+          dotnet nuget push "${{ runner.temp }}/nupkg/*.nupkg"
+          --source ${{ env.FEED }}
+          --api-key ${{ secrets.GITHUB_TOKEN }}

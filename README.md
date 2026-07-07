@@ -73,6 +73,14 @@ Installation (Windows only or using Wine on Linux/MacOS):
 pip install mt5-grpc-server
 ```
 
+## 📦 Consuming the C# Client Package
+
+A ready-to-use C# client, `MetaTrader.Grpc.Client` (`netstandard2.0`, for .NET
+Framework 4.8 through modern .NET), is published to the organization's GitHub
+Packages NuGet registry. Add the feed with a `read:packages` token and a single
+`PackageReference` — no repository checkout and no code generation required. See
+the [client install guide](mt5_grpc_client_csharp/README.md#install-from-github-packages).
+
 ## ✨ Features
 - Account information retrieval
 - Trading symbol management

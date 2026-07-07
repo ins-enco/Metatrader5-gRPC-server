@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Distribution
+
+- The package is now consumed from the organization's **GitHub Packages** NuGet
+  registry (`https://nuget.pkg.github.com/ins-enco/index.json`): add the source
+  with a `read:packages` token and a single `PackageReference` — all runtime
+  dependencies resolve automatically and no protobuf/gRPC code generation runs in
+  the consumer. See the README "Install from GitHub Packages" section.
+- Publishing is **tag-triggered and reproducible**: pushing a client-scoped tag
+  `csharp-client-v<X.Y.Z>` runs the `csharp-client-publish` workflow, which builds,
+  tests, runs generated-binding + package-metadata gates, verifies the tag matches
+  `<Version>`, packs deterministically, and pushes with the CI `GITHUB_TOKEN`.
+  Re-publishing an existing version is rejected (HTTP 409); versions are immutable.
+- No proto/contract, wire, or MT5 behavior change — distribution only.
+
 ## 0.2.0
 
 ### Breaking
