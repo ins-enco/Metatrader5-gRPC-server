@@ -66,8 +66,23 @@ jobs:
 
       # Push WITHOUT --skip-duplicate: re-publishing an existing version returns
       # HTTP 409 and fails the job, keeping every version immutable (FR-008, SC-007).
+      # Resolve the packed .nupkg explicitly instead of a glob: some dotnet SDK
+      # patches ignore `-o` when combined with `--no-build` (dotnet/sdk#25242) and
+      # emit the package to bin\Release, which left the glob unmatched in CI.
       - name: Publish to GitHub Packages
-        run: >
-          dotnet nuget push "${{ runner.temp }}/nupkg/*.nupkg"
-          --source ${{ env.FEED }}
-          --api-key ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        env:
+          NUGET_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $pkgs = @(Get-ChildItem -Path "${{ runner.temp }}/nupkg" -Filter *.nupkg -ErrorAction SilentlyContinue)
+          if ($pkgs.Count -eq 0) {
+            $pkgs = @(Get-ChildItem -Path "mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/bin/Release" -Filter *.nupkg -ErrorAction SilentlyContinue)
+          }
+          if ($pkgs.Count -eq 0) {
+            throw "Pack produced no .nupkg (looked in ${{ runner.temp }}/nupkg and bin/Release)."
+          }
+          foreach ($p in $pkgs) {
+            Write-Host "Pushing $($p.FullName)"
+            dotnet nuget push $p.FullName --source $env:FEED --api-key $env:NUGET_TOKEN
+            if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed for $($p.FullName) (exit $LASTEXITCODE)." }
+          }
