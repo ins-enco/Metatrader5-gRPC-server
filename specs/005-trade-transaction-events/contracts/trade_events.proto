@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package metatrader.v1;
+
+import "common.proto";
+
+// Trade transaction event streaming.
+//
+// This is the FIRST streaming RPC in the contract. It is a strictly additive,
+// backward-compatible addition: no existing service, message, field, or field
+// number is modified. All existing RPCs remain unary and unchanged.
+//
+// The MetaTrader 5 Python API exposes no push/event callback (OnTradeTransaction
+// exists only in MQL5/EA), so events are emulated by server-side polling of the
+// historical deals feed (history_deals_get) over an advancing time window. A
+// "trade transaction" is a newly added deal (the Python-observable equivalent of
+// MQL5 OnTradeTransaction DEAL_ADD).
+service TradeEventsService {
+  // Open a long-lived subscription that streams one TradeTransactionEvent per
+  // newly added deal on the connected account as it is observed.
+  //
+  // Delivery is exactly-once per subscription, in chronological order, with no
+  // duplicates (de-duplicated on deal ticket, so same-millisecond deals are both
+  // delivered). Idle streams stay open via transport-level keepalive
+  // (gRPC/HTTP-2 PING); no application-level heartbeat events are emitted.
+  // The stream ends on client cancellation/disconnect or on a terminal failure
+  // (signalled by a final event carrying `error`).
+  rpc SubscribeTradeTransactions(SubscribeTradeTransactionsRequest)
+      returns (stream TradeTransactionEvent);
+}
+
+// Client's intent to receive trade transaction events. Sent once at stream open.
+message SubscribeTradeTransactionsRequest {
+  // Start point as milliseconds since the Unix epoch.
+  //   - unset or 0  -> start at current server time (no historical replay).
+  //   - a past time -> backfill from that time forward, once, then continue live.
+  // The server caps backfill to a 7-day lookback: a value older than
+  // (now - 7 days) is clamped forward to (now - 7 days).
+  optional int64 from_time_msc = 1;
+
+  // Poll cadence in milliseconds (how often the account is checked for new deals).
+  //   - unset      -> defaults to 1000 ms.
+  //   - below 200  -> clamped up to the server floor of 200 ms.
+  optional int64 poll_interval_ms = 2;
+}
+
+// A single completed trade action observed on the account, derived from a deal.
+//
+// When `error` is set, this is a terminal error frame: the transaction fields are
+// unset and the stream ends after it. Consumers MUST check `error` before reading
+// the transaction fields.
+message TradeTransactionEvent {
+  uint64 deal_ticket = 1;      // Deal ticket (unique; de-duplication key).
+  uint64 order_ticket = 2;     // Associated order ticket (MT5 deal.order).
+  uint64 position_ticket = 3;  // Associated position ticket (MT5 deal.position_id).
+  string symbol = 4;           // Instrument symbol.
+  double volume = 5;           // Executed volume.
+  double price = 6;            // Execution price.
+  double profit = 7;           // Realized profit for the deal.
+  int64 time_msc = 8;          // Transaction time in milliseconds since epoch (ordering key).
+  int32 type = 9;              // Deal direction: verbatim MT5 ENUM_DEAL_TYPE (0=BUY, 1=SELL, ...).
+  int32 entry = 10;            // Deal entry: verbatim MT5 ENUM_DEAL_ENTRY (0=IN, 1=OUT, 2=INOUT, ...).
+
+  // In-band error, consistent with other services' Error reporting. When present,
+  // the event is a terminal error signal and the stream ends.
+  optional Error error = 11;
+}
