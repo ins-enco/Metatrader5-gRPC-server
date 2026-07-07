@@ -5,6 +5,15 @@
 **Status**: Draft
 **Input**: User description: "TradeTransaction event streaming across the MT5 gRPC stack — add a real-time trade action / trade transaction event capability that currently does not exist in the proto contract, the Python server, or the C# client."
 
+## Clarifications
+
+### Session 2026-07-07
+
+- Q: How should the C# client library expose trade transaction events — async sequence, event callback, or both? → A: Both — the core API is an `IAsyncEnumerable<TradeTransactionEvent>` mapping 1:1 to the server stream, with a thin C# `event` wrapper layered on top for the "subscribe to an event" ergonomics.
+- Q: What are the default poll cadence and the server-enforced minimum floor? → A: Default 1000 ms; minimum floor 200 ms (client-requested cadence below the floor is clamped to 200 ms).
+- Q: Should historical backfill from an explicit past start time be bounded? → A: Yes — the server caps backfill to a maximum lookback window of 7 days; start times older than 7 days are clamped to the cap.
+- Q: How are idle long-lived streams kept alive / detected when broken? → A: Transport-level keepalive only (gRPC/HTTP-2 PING); no application-level heartbeat events. The event stream carries only real transactions; drops surface through the existing error model for consumer resubscription.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Subscribe to live trade transactions (Priority: P1)
@@ -109,14 +118,18 @@ and confirm continuity with no gap or duplication.
   associated position ticket, symbol, executed volume, price, profit, transaction time, deal direction
   (buy/sell), and deal entry type (in/out/inout).
 - **FR-004**: The system MUST allow the client to specify the point in time from which events should
-  begin, so historical transactions before that point are not delivered.
+  begin, so historical transactions before that point are not delivered. The server MUST cap backfill
+  to a maximum lookback window of 7 days; a starting time older than 7 days before the subscription
+  start is clamped forward to the cap (bounding one-shot history replay and stream start-up cost).
 - **FR-005**: When the client does not specify a starting time, the system MUST begin from the moment
   the subscription starts (no historical replay by default).
 - **FR-006**: The system MUST deliver each qualifying transaction exactly once per subscription, in
   chronological order, with no duplicates, including when multiple transactions share the same
   timestamp.
 - **FR-007**: The system MUST allow the client to control how frequently the account is checked for new
-  transactions (poll cadence), within safe bounds enforced by the server.
+  transactions (poll cadence). When unspecified, the cadence defaults to 1000 ms. The server MUST
+  enforce a minimum floor of 200 ms, clamping any client-requested cadence below the floor up to
+  200 ms.
 - **FR-008**: The system MUST end a subscription promptly and release its resources when the client
   cancels it or the connection is lost.
 - **FR-009**: The system MUST report failures (terminal not initialized, transaction lookup failure,
@@ -124,14 +137,19 @@ and confirm continuity with no gap or duplication.
   them consistently.
 - **FR-010**: The system MUST support multiple concurrent, independent subscriptions without one
   affecting another's delivery.
-- **FR-011**: The consuming library MUST expose the subscription in a way idiomatic to its existing
-  surface, allowing consumers to receive events as an asynchronous sequence and/or via an event
-  callback, following the library's established result and error conventions.
+- **FR-011**: The consuming library MUST expose the subscription both as an asynchronous sequence
+  (`IAsyncEnumerable`-style) that maps directly to the server stream AND as a C# `event`-style callback
+  layered on top of that sequence, following the library's established result and error conventions.
+  The asynchronous sequence is the primary/core surface; the event wrapper is a convenience over it.
 - **FR-012**: The addition MUST be backward compatible — no existing operation's contract, behavior, or
   field numbering may change.
 - **FR-013**: The capability MUST be available consistently across the shared contract, the server, and
   the client library so that a client generated from the contract can talk to the server without manual
   adjustment.
+- **FR-014**: The system MUST keep idle long-lived subscriptions alive using transport-level keepalive
+  (gRPC/HTTP-2 PING) rather than application-level heartbeat messages; the event stream MUST carry only
+  real transaction events. A broken connection MUST surface through the existing error model so the
+  consumer can resubscribe (per FR-009 / User Story 3).
 
 ### Protocol and MT5 Contract Impact *(mandatory)*
 
@@ -198,8 +216,9 @@ and confirm continuity with no gap or duplication.
 - **Default start is now**: An unspecified or zero starting time means the subscription begins at the
   current server time; historical backfill happens only when the client supplies an explicit past
   starting time.
-- **Poll cadence bounds**: The server enforces a sensible default poll interval and a minimum floor to
-  protect the terminal from excessive querying; a client-requested cadence below the floor is clamped.
+- **Poll cadence bounds**: The default poll interval is 1000 ms and the server-enforced minimum floor
+  is 200 ms; a client-requested cadence below the floor is clamped up to 200 ms to protect the terminal
+  from excessive querying.
 - **Symbol scope**: The subscription covers all of the account's transactions; per-symbol filtering is
   not included in this version (can be added later without breaking the contract).
 - **Resume is client-driven**: On disconnect, the consumer resumes by starting a new subscription with
