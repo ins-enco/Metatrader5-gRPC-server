@@ -1,5 +1,5 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/005-trade-transaction-events/plan.md
+at specs/006-prebuilt-image-per-login/plan.md
 <!-- SPECKIT END -->
