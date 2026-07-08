@@ -5,6 +5,15 @@
 **Status**: Draft  
 **Input**: User description: "I want to add one more option when deploying Docker: another way to build the image — a prebuilt image that already includes Python + VC++ + the MT5 terminal + a gRPC server inside. Because I want to run multiple containers on one machine, one for each login, I will no longer mount a shared volume. Instead, each container will have its own writable layer."
 
+## Clarifications
+
+### Session 2026-07-08
+
+- Q: How should the two deployment images be released to GHCR? → A: Two release types — the existing bootstrap image (unchanged) plus the new prebuilt self-contained image, both published to GHCR.
+- Q: What GHCR visibility should the packages have? → A: Both packages private (require authentication to pull).
+- Q: Does per-login runtime state need to survive container recreation? → A: No — ephemeral only; state lives in the writable layer and is intentionally disposable. No volumes in v1.
+- Q: How are per-login containers launched and at what scale? → A: A parameterized per-login launcher (takes login + port, starts a container); scales to ~dozens.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Deploy a ready-to-run image with no first-run bootstrap (Priority: P1)
@@ -80,6 +89,9 @@ An operator reviewing how to deploy can see both options — the existing bootst
 - **FR-011**: The prebuilt image MUST preserve the existing logging behavior, including verbose request/response logging and redaction of secret-like fields (password, token, secret, api_key, and similar).
 - **FR-012**: Documentation MUST describe both deployment options, their trade-offs, and the procedure for running multiple per-login containers with distinct ports and credentials.
 - **FR-013**: The endpoint of each container MUST default to a non-public binding (host-local) unless the operator explicitly chooses to expose it, consistent with the existing deployment's security posture.
+- **FR-014**: The project MUST provide two GHCR release types: the existing bootstrap image (published unchanged) and the new prebuilt self-contained image, each built and published as a distinct, identifiable artifact.
+- **FR-015**: Both GHCR packages (bootstrap and prebuilt) MUST be private, requiring authentication to pull. Keeping the prebuilt package private is required because it redistributes the MetaTrader 5 terminal.
+- **FR-016**: The prebuilt deployment MUST provide a parameterized per-login launcher that takes at least a login identifier and a host port and starts an isolated container, so operators can bring up per-login containers without hand-editing configuration for each account. It MUST scale to on the order of dozens of concurrent per-login containers on one host.
 
 ### Protocol and MT5 Contract Impact *(mandatory)*
 
@@ -99,7 +111,7 @@ An operator reviewing how to deploy can see both options — the existing bootst
 ### Measurable Outcomes
 
 - **SC-001**: A container started from the prebuilt image is ready to accept gRPC requests in under 60 seconds, without any runtime install/download step (versus the multi-minute first-run bootstrap of the existing deployment).
-- **SC-002**: An operator can run at least 5 independent per-login containers on a single host, each with distinct credentials and ports, and each serves its own account with no cross-interference.
+- **SC-002**: Using the parameterized per-login launcher, an operator can bring up on the order of dozens of independent per-login containers on a single host (subject to host resources), each with distinct credentials and ports, and each serves its own account with no cross-interference.
 - **SC-003**: The prebuilt deployment runs with zero shared or persistent volume mounts.
 - **SC-004**: Stopping, recreating, or failing one per-login container has zero impact on the other running containers.
 - **SC-005**: A new operator can choose and launch either deployment option, and bring up multiple per-login containers, by following the documentation alone in under 15 minutes.
@@ -108,10 +120,10 @@ An operator reviewing how to deploy can see both options — the existing bootst
 ## Assumptions
 
 - **Prebuilt option is additive**: The existing `deploy/wine-docker` bootstrap deployment remains the default reference; this feature adds a parallel prebuilt option rather than replacing it.
-- **Writable-layer state is ephemeral by design**: Per the operator's explicit choice to drop the shared volume, per-login runtime state lives only in each container's writable layer and is not expected to persist across container recreation. If durable per-login state is needed later, attaching a per-container volume is a separate, out-of-scope enhancement.
+- **Writable-layer state is ephemeral by design** (confirmed): Per-login runtime state lives only in each container's writable layer and is intentionally disposable — it is not expected to persist across container recreation, and v1 mounts no volumes at all. Durable per-login state (an opt-in per-container volume) is explicitly out of scope for v1.
 - **MT5 obtained at build time**: The prebuilt image downloads/installs the MetaTrader 5 terminal during the image build (reasonable default), pinned to a defined installer source, so runtime needs no download.
-- **Image distribution is the operator's responsibility**: Because the prebuilt image bundles the MetaTrader 5 terminal, the resulting image is intended for the operator's own/internal use; MetaTrader 5 redistribution/licensing terms must be respected and the prebuilt image should not be published to a public registry. This is documented as a caveat.
+- **Both images are released to GHCR as private packages**: Two release types are published — the existing bootstrap image (unchanged) and the new prebuilt self-contained image — both as **private** GHCR packages requiring authentication to pull. Private is required for the prebuilt image because it bundles/redistributes the MetaTrader 5 terminal (see FR-014, FR-015).
 - **One account per container**: Each container serves exactly one MetaTrader 5 login; multi-account within a single container is out of scope.
-- **Operator assigns ports and credentials**: The operator is responsible for giving each per-login container a unique host port and the correct per-account credentials.
+- **Operator assigns ports and credentials via the launcher**: The operator supplies each per-login container's unique host port and per-account credentials through the parameterized launcher (FR-016); the operator remains responsible for choosing non-colliding ports and correct credentials.
 - **Same runtime behavior**: Aside from provisioning, the prebuilt image runs the same server with the same configuration surface (host/port, verbose logging, redaction, algo-trading enablement) as the existing deployment.
 - **Reuses existing technology base**: The prebuilt image is expected to build on the same Windows-runtime-under-Wine approach as the existing deployment, since the MetaTrader 5 Python integration is Windows-native.
