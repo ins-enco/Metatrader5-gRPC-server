@@ -5,7 +5,7 @@
     <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
     <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
     <PackageId>MetaTrader.Grpc.Client</PackageId>
-    <Version>2.0.2</Version>
+    <Version>3.0.0</Version>
     <Authors>MetaTrader gRPC</Authors>
     <Company>MetaTrader gRPC</Company>
     <Description>C# client library for the MetaTrader 5 gRPC server contracts.</Description>
