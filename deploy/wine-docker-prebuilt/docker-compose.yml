@@ -1,0 +1,28 @@
+# Single-container example for the PREBUILT self-contained image.
+#
+# Contrast with deploy/wine-docker/docker-compose.yml (the bootstrap option):
+# there is NO `volumes:` section here. The Wine prefix (Python, VC++, MT5, and
+# the server packages) is baked into the image, and each container keeps its
+# state in its own ephemeral writable layer (FR-002, FR-003, container-env.md).
+services:
+  mt5-grpc-server-prebuilt:
+    build:
+      context: ../..
+      dockerfile: deploy/wine-docker-prebuilt/Dockerfile
+    image: ghcr.io/ins-enco/mt5-grpc-server-prebuilt:latest
+    container_name: mt5-grpc-server-prebuilt
+    ports:
+      - "127.0.0.1:50051:50051"
+    environment:
+      # Runtime-only variables (contracts/container-env.md). No install/download
+      # variables are consulted at runtime — those are build ARGs.
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50051
+      GRPC_VERBOSE: "true"
+      MT5_LOGIN: ""
+      MT5_PASSWORD: ""
+      MT5_SERVER: ""
+      MT5_STARTUP_DELAY: "20"
+    shm_size: "1gb"
+    restart: unless-stopped
+    # Intentionally no `volumes:` — zero-volume contract (FR-003, SC-003).

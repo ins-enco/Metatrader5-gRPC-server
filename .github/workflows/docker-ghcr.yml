@@ -12,6 +12,18 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Existing bootstrap image — unchanged (FR-008).
+          - name: mt5-grpc-server
+            dockerfile: deploy/wine-docker/Dockerfile
+          # New prebuilt self-contained image — distinct artifact (FR-014).
+          # Keep this GHCR package PRIVATE: it redistributes the MT5 terminal
+          # (FR-015).
+          - name: mt5-grpc-server-prebuilt
+            dockerfile: deploy/wine-docker-prebuilt/Dockerfile
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,7 +39,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/mt5-grpc-server
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -39,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/wine-docker/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

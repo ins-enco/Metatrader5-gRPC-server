@@ -118,6 +118,27 @@ mt5-grpc-server --host 127.0.0.1 --port 50052 --secure --cert-file server.crt --
 - `--cert-file FILE`: Path to the SSL certificate file (required if --secure is used)
 - `--private-key-file FILE`: Path to the private key file (required if --secure is used)
 
+## 🐳 Docker Deployment Options
+
+Two additive, independent Docker deployment options are provided under `deploy/`.
+Both publish to GHCR as **private** packages (authenticate to pull), and both
+expose the same gRPC contract and server behavior — they differ only in how MT5
+and the runtime are provisioned.
+
+| Option | Image | State model | Best for |
+| --- | --- | --- | --- |
+| [**Bootstrap**](deploy/wine-docker/) | `mt5-grpc-server` | shared persistent `wineprefix` **volume**; installs Python/VC++/MT5 on first start | small image, single/shared account, persistent prefix |
+| [**Prebuilt**](deploy/wine-docker-prebuilt/) | `mt5-grpc-server-prebuilt` | **zero volumes**; per-container writable layer; nothing installs at runtime | fast/immutable start (< 60s), one isolated container per login |
+
+- Choose **bootstrap** for a small image and a persistent shared prefix — see
+  [`deploy/wine-docker/`](deploy/wine-docker/).
+- Choose **prebuilt** for fast, immutable, multi-tenant per-login containers with
+  no volumes, launched via `run-login.sh` / `run-login.ps1` — see
+  [`deploy/wine-docker-prebuilt/README.md`](deploy/wine-docker-prebuilt/README.md).
+
+The prebuilt package **must stay private** because it redistributes the
+MetaTrader 5 terminal.
+
 ## 🛠️ Development Setup
 
 1. Clone the repository:
