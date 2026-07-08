@@ -30,3 +30,5 @@ from .terminal_pb2 import *
 from .terminal_pb2_grpc import *
 from .trade_pb2 import *
 from .trade_pb2_grpc import *
+from .trade_events_pb2 import *
+from .trade_events_pb2_grpc import *

@@ -1,20 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
     <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
     <PackageId>MetaTrader.Grpc.Client</PackageId>
-    <Version>0.2.1</Version>
+    <Version>3.0.0</Version>
     <Authors>MetaTrader gRPC</Authors>
     <Company>MetaTrader gRPC</Company>
     <Description>C# client library for the MetaTrader 5 gRPC server contracts.</Description>
     <PackageTags>metatrader;mt5;grpc;protobuf;client</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <ProtoContractIdentity>protos-003-csharp-request-enums</ProtoContractIdentity>
-    <TestedServerVersionRange>[0.2.0,1.0.0)</TestedServerVersionRange>
+    <ProtoContractIdentity>protos-005-trade-transaction-events</ProtoContractIdentity>
+    <TestedServerVersionRange>[0.3.0,1.0.0)</TestedServerVersionRange>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.2.0 (breaking): request enum fields (TradeRequest.action/type/type_filling/type_time, OrderCalc{Margin,Profit}Request.action) are now native protobuf enums. Wire-compatible (varint); C# integer assignments must migrate to named values. See MIGRATION.md. Proto contract identity: protos-003-csharp-request-enums. Tested server range: [0.2.0,1.0.0).</PackageReleaseNotes>
+    <PackageReleaseNotes>0.3.0 (additive, backward-compatible): adds TradeEventsService.SubscribeTradeTransactions, the first server-streaming RPC, exposed as IAsyncEnumerable&lt;TradeTransactionEvent&gt; plus a C# event wrapper (TradeTransactionSubscription). No existing RPC, message, field, or field number changed. Proto contract identity: protos-005-trade-transaction-events. Tested server range: [0.3.0,1.0.0).</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
@@ -24,11 +25,18 @@
     <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
     <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
     <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Protobuf Include="..\..\..\protos\*.proto" GrpcServices="Client" ProtoRoot="..\..\..\protos" />
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>MetaTrader.Grpc.Client.ContractTests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

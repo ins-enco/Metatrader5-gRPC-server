@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="mt5_grpc_server",
-    version="0.2.1",
+    version="0.3.0",
     description="MetaTrader 5 gRPC Server for remote trading operations",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -16,7 +16,7 @@ setup(
         "protobuf>=5.29.2",
         "pytz>=2024.2",
         "MetaTrader5>=5.0.33",
-        "mt5_grpc_proto>=0.2.1"
+        "mt5_grpc_proto>=0.3.0"
     ],
     extras_require={
         'dev': [

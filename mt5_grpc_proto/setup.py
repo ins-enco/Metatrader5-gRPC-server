@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="mt5_grpc_proto",
-    version="0.2.1",
+    version="0.3.0",
     description="Protocol Buffers and gRPC service definitions for MetaTrader 5 RPC Server",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

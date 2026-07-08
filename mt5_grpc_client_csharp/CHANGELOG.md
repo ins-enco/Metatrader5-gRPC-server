@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+
+- **Trade transaction event streaming** — `Mt5GrpcClient.SubscribeTradeTransactionsAsync`
+  returns an `IAsyncEnumerable<TradeTransactionEvent>` mapping 1:1 to the new
+  `TradeEventsService.SubscribeTradeTransactions` server stream (the first streaming
+  RPC in the contract). A `TradeTransactionSubscription` event wrapper
+  (`SubscribeTradeTransactions`) layers `TransactionReceived` / `Completed` /
+  `Faulted` events over the sequence for subscribe-style ergonomics.
+- Stream faults (transport or in-band `Error`) surface as `Mt5GrpcClientException`
+  whose `Error` carries the mapped `Mt5GrpcError`, so consumers can resubscribe from
+  the last received `TimeMsc`.
+- Added `Microsoft.Bcl.AsyncInterfaces` so `IAsyncEnumerable<T>` is available on
+  `netstandard2.0`; internal `Mt5GrpcStreamingInvoker` mirrors the unary invoker's
+  error mapping and logging.
+
+### Changed
+
+- Version `0.3.0`; proto contract identity `protos-005-trade-transaction-events`;
+  tested server range `[0.3.0,1.0.0)`. Purely additive — no existing RPC, message,
+  field, or field number changed.
+
 ## Unreleased
 
 ### Distribution

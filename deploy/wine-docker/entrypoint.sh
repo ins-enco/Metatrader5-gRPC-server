@@ -93,7 +93,30 @@ if [ ! -f "${mt5_terminal_file}" ]; then
 fi
 
 echo "MetaTrader 5 found at ${mt5_terminal_file}."
-wine "${mt5_terminal_path}" >/tmp/mt5-terminal.log 2>&1 &
+
+# Generate an MT5 startup config so the headless terminal enables AutoTrading
+# automatically (there is no GUI to click the "Algo Trading" button under Xvfb).
+# [Experts] Enabled=1 turns on the AutoTrading toolbar button; AllowLiveTrading=1
+# is the "Allow Algorithmic Trading" option. A [Common] section is added only when
+# MT5_LOGIN is provided, so the terminal can also auto-login. MT5 expects CRLF.
+autostart_ini="${WINEPREFIX}/drive_c/mt5-autostart.ini"
+autostart_ini_win='C:\mt5-autostart.ini'
+{
+    if [ -n "${MT5_LOGIN:-}" ]; then
+        printf '[Common]\r\n'
+        printf 'Login=%s\r\n' "${MT5_LOGIN}"
+        printf 'Password=%s\r\n' "${MT5_PASSWORD:-}"
+        printf 'Server=%s\r\n' "${MT5_SERVER:-}"
+    fi
+    printf '[Experts]\r\n'
+    printf 'AllowLiveTrading=1\r\n'
+    printf 'Enabled=1\r\n'
+    printf 'AllowDllImport=1\r\n'
+    printf 'Account=0\r\n'
+    printf 'Profile=0\r\n'
+} > "${autostart_ini}"
+
+wine "${mt5_terminal_path}" "/config:${autostart_ini_win}" >/tmp/mt5-terminal.log 2>&1 &
 sleep "${MT5_STARTUP_DELAY:-20}"
 
 host="${GRPC_HOST:-0.0.0.0}"
