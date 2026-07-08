@@ -215,7 +215,10 @@ and confirm continuity with no gap or duplication.
   delivery is achieved by server-side polling. "Real-time" is understood as "within one poll interval."
 - **Default start is now**: An unspecified or zero starting time means the subscription begins at the
   current server time; historical backfill happens only when the client supplies an explicit past
-  starting time.
+  starting time. "Now" is anchored in the **broker server-time base** (the base MT5 deal timestamps use),
+  not the server host's wall clock, which may be offset by hours; the implementation establishes this
+  by baselining on the newest existing deal at the first poll rather than reading the host clock, and
+  widens the poll window to tolerate the offset (see research Decision 8).
 - **Poll cadence bounds**: The default poll interval is 1000 ms and the server-enforced minimum floor
   is 200 ms; a client-requested cadence below the floor is clamped up to 200 ms to protect the terminal
   from excessive querying.

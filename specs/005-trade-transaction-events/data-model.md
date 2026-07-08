@@ -44,7 +44,14 @@ The client's intent to receive events (spec *Subscription Request*).
 | `poll_interval_ms` | `optional int64` | 2 | unset ⇒ **1000 ms**; `< 200` ⇒ **clamped up to 200 ms** | Poll cadence, ms (FR-007). |
 
 **Validation rules (server-side, applied at stream open)**
-1. Resolve start: `start = (from_time_msc unset or 0) ? now_ms : max(from_time_msc, now_ms − 7*24*3600*1000)`.
+1. Resolve start:
+   - **Explicit** past `from_time_msc` ⇒ `start = max(from_time_msc, now_ms − 7*24*3600*1000)`;
+     initialize the watermark to `(start, UINT64_MAX)`.
+   - **Unset or `0`** (start now) ⇒ do **not** seed the watermark from the host
+     clock. Initialize a low floor `(now_ms − 7*24*3600*1000, UINT64_MAX)` and
+     baseline it on the newest existing deal at the first poll, so nothing already
+     in history is replayed and the watermark stays in MT5's server-time base
+     (Decision 8).
 2. Resolve cadence: `cadence = (poll_interval_ms unset) ? 1000 : max(poll_interval_ms, 200)`.
 3. If the MT5 terminal is not initialized/logged in ⇒ emit one error event
    (`mt5.last_error()`) and end (edge case: not initialized).
@@ -59,13 +66,15 @@ call; occupies one server worker thread.
 
 | State | Type | Purpose |
 |-------|------|---------|
-| `watermark` | `(time_msc: int64, ticket: uint64)` | Last delivered deal tuple; advances monotonically. De-dup + ordering (Decision 3). |
+| `watermark` | `(time_msc: int64, ticket: uint64)` | Last delivered deal tuple; advances monotonically. De-dup + ordering (Decision 3). Its `time_msc` is always in MT5's **server-time base** (Decision 8). |
+| `baseline_pending` | `bool` | Default-start-now only: true until the first poll adopts the newest existing deal as the watermark (delivering nothing from that poll), so no stale history is replayed and the watermark enters the server-time base (Decision 8). |
 | `cadence_ms` | `int64` | Resolved poll interval (≥ 200). |
 | `active` | derived from `context.is_active()` | Cancellation / disconnect signal → loop exits, worker released (FR-008, SC-004). |
 
 **State transitions**
 ```
 open ──resolve start/cadence──► polling
+polling ──first poll & start-now──► baseline watermark on newest existing deal (emit nothing) ──► polling
 polling ──deals found──► emit ordered events, advance watermark ──► polling
 polling ──no deals──► sleep(cadence) ──► polling            (stream stays healthy, FR: US1 #3)
 polling ──client cancel / disconnect──► closed (worker freed)
@@ -89,8 +98,11 @@ TradeTransactionEvent.error ──reuses──► common.proto Error
 
 - **Time**: milliseconds as `int64` everywhere (`from_time_msc`, `time_msc`) —
   preserves ordering precision and avoids locale/second-truncation ambiguity. Note
-  the MT5 `history_deals_get` filter is **second**-granular; the server queries from
-  the watermark's floored second and filters precisely on the ms tuple.
+  the MT5 `history_deals_get` filter is **second**-granular and operates in the
+  broker **server-time base** (which may be offset from the host UTC clock); the
+  server queries a clock-skew-widened window and filters precisely on the ms tuple
+  (Decision 8). All comparisons are done between server-time values, never against
+  the host clock.
 - **Identifiers**: `uint64` for all tickets (deal/order/position), matching MT5 and
   the existing `Deal` message.
 - **Money/volume/price**: `double`, matching existing messages.

@@ -42,9 +42,10 @@ concerns isolated and leaves the unary history service's contract identity intac
 
 **Decision**: Derive events from **newly added deals** using
 `mt5.history_deals_get(date_from, date_to)` over an advancing time window, exactly
-as `TradeHistoryServiceImpl.GetDeals` already calls it. Each poll queries
-`[watermark_time, now]`, filters out already-delivered deals, emits the rest in
-order, then advances the watermark.
+as `TradeHistoryServiceImpl.GetDeals` already calls it. Each poll queries a window
+around `[watermark_time, now]` (widened by a clock-skew margin — see Decision 8),
+filters out already-delivered deals by the precise `(time_msc, ticket)` tuple,
+emits the rest in order, then advances the watermark.
 
 **Rationale**: The MetaTrader 5 **Python** API has no push/event callback —
 `OnTradeTransaction` is an MQL5/EA-only concept. Polling the historical deals feed
@@ -65,9 +66,11 @@ completed trade action (matches the spec's Assumptions).
 
 **Decision**: Track per-subscription state as the last delivered
 `(time_msc, deal_ticket)`. Each poll:
-1. queries `history_deals_get(from=floor(watermark_time_msc/1000), to=now)` (MT5
-   time filters are second-granular, so query from the watermark's **second** to
-   avoid missing sub-second-later deals),
+1. queries `history_deals_get(date_from, date_to)` over a window that spans the
+   watermark's second and `now`, **widened by a clock-skew margin on both bounds**
+   (see Decision 8) so a host/broker clock offset can't exclude an otherwise-new
+   deal; the window is deliberately loose — correctness comes from step 3, not the
+   window,
 2. sorts candidates by `(time_msc, ticket)` ascending,
 3. skips any deal with `(time_msc, ticket) <= watermark`,
 4. emits the remainder, advancing the watermark to the last emitted
@@ -76,6 +79,11 @@ completed trade action (matches the spec's Assumptions).
 Deduplication is keyed on the **deal ticket** (globally unique, monotonic), not on
 timestamp, so two deals sharing a millisecond are both delivered once (FR-006, edge
 case "clock/timestamp ambiguity").
+
+The watermark's **time component is always in MT5's server-time base** — for an
+explicit start it comes from `from_time_msc`; for default "start now" it is
+baselined on the newest existing deal at the first poll (Decision 8), never from
+the host clock — so the tuple comparison in step 3 is always same-base.
 
 **Rationale**: Ticket is the only reliably unique, stable identifier; time alone is
 not (ties happen). Querying from the watermark's second and then filtering by the
@@ -123,8 +131,10 @@ idiomatic sync-gRPC pattern and needs no extra threads.
 
 **Decision**: `SubscribeTradeTransactionsRequest` carries `optional int64
 from_time_msc` and `optional int64 poll_interval_ms`. Server rules:
-- **Unset or `0`** `from_time_msc` ⇒ start at current server time (no historical
-  replay) — FR-005.
+- **Unset or `0`** `from_time_msc` ⇒ start at "now" with no historical replay —
+  FR-005. Implemented by baselining the watermark on the newest **existing** deal
+  at the first poll rather than on a host-clock `now` (see Decision 8), so nothing
+  already in history is replayed and the watermark stays in MT5's server-time base.
 - Explicit past `from_time_msc` older than `now - 7 days` ⇒ **clamp forward** to
   `now - 7 days` (bounded one-shot backfill) — FR-004.
 - `poll_interval_ms` unset ⇒ **1000 ms**; any value `< 200` ⇒ **clamp up to 200 ms**
@@ -208,6 +218,53 @@ that cancellation options flow through.
 
 ---
 
+## Decision 8 — Broker server-time base: clock-skew-tolerant window + first-poll baseline
+
+**Decision**: Treat MT5 deal timestamps and the `history_deals_get` time filter as
+living in the **broker server-time base**, which may differ from the server host's
+UTC wall clock (`time.time()`) by hours. Accordingly:
+- **Query window** is widened by a fixed clock-skew margin (`CLOCK_SKEW_MARGIN_MS`,
+  24 h) on both bounds: `date_from = min(watermark_time, now) − margin` (clamped to
+  the 7-day floor and ≥ 0), `date_to = now + margin`. The margin only affects which
+  deals are *fetched*; exactly-once/ordering is still enforced by the precise
+  `(time_msc, ticket)` watermark filter (Decision 3).
+- **Default "start now" watermark** is not seeded from the host clock. Instead the
+  first poll runs with a low floor watermark (`now − 7 days`), and every deal that
+  already exists is absorbed as the baseline (watermark ← newest existing
+  `(time_msc, ticket)`), delivering nothing from that first poll. If the account has
+  no history, the floor stands and the first genuinely new deal exceeds it. Either
+  way the watermark's time is thereafter in the server-time base.
+
+**Rationale**: MT5 filters `history_deals_get` by server time and returns
+`deal.time_msc` in that same base. The original design seeded the "start now"
+watermark and built the poll window from the host UTC clock, so on any broker whose
+server time is offset from UTC (e.g. EET, UTC+2/+3 — common), a just-created deal
+fell outside the tight `[now, now+1s]` window and was **never fetched**, and the
+host-clock floor could also mis-classify deals (drop new ones on a behind-UTC
+broker, or spuriously replay recent history on an ahead-UTC broker). Baselining on
+the newest existing deal makes the watermark share the deals' own time base without
+needing to *know* the broker offset, and the widened window guarantees the deal is
+fetched regardless of offset sign. This is what makes SC-001 (event within one
+cadence) and SC-002 (zero historical replay on default start) hold on real brokers,
+not just when host and server clocks happen to coincide.
+
+**Trade-off accepted**: a deal that already exists at the instant of the very first
+poll is treated as pre-existing (absorbed into the baseline, not delivered) — "start
+now" cannot distinguish it from history. In practice the first poll fires within one
+cadence of subscription, so a deal created *after* subscribing lands on a later poll
+and is delivered.
+
+**Alternatives rejected**:
+- *Query a server-time reference (e.g. a symbol tick's `time_msc`) to convert "now"
+  to server time* — needs a symbol, adds a fragile extra MT5 call per subscription,
+  and still races; the max-existing-deal baseline needs no offset knowledge.
+- *Keep the host-clock watermark and only widen the window* — fixes fetching on an
+  ahead-UTC broker but leaves the mis-classification (replay / drop) bug.
+- *Make the operator configure the broker offset* — a foot-gun that drifts with DST;
+  the baseline is self-correcting.
+
+---
+
 ## Cross-cutting notes
 
 - **Generation workflow**: Python bindings via `generate_proto.sh`
@@ -222,5 +279,8 @@ that cancellation options flow through.
 - **Testability without a broker**: the poll loop is written against an injected /
   patchable `history_deals_get` so `pytest` can feed synthetic deal sequences
   (bursts, same-ms ties, empty polls, failures) and assert exactly-once, ordering,
-  default-start-now, 7-day clamp, and cadence clamp; C# tests assert generated
-  surface + `await foreach` + event wrapper against an in-process/fake stream.
+  default-start-now, 7-day clamp, cadence clamp, and **clock-skew tolerance**
+  (default-start delivers a new deal whose `time_msc` is offset ahead/behind the
+  host clock, and baselines existing history without replay — Decision 8); C# tests
+  assert generated surface + `await foreach` + event wrapper against an
+  in-process/fake stream.

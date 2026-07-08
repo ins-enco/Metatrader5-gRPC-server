@@ -73,7 +73,7 @@ Multi-language repo (per plan.md):
 
 ### Implementation for User Story 1
 
-- [x] T015 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement the poll loop with a `(time_msc, ticket)` watermark: each iteration query `history_deals_get(from=floor(watermark_time_msc/1000), to=now)`, sort candidates by `(time_msc, ticket)` ascending, skip any `(time_msc, ticket) <= watermark`, emit the remainder, advance the watermark (exactly-once + ordering, FR-006, Decision 3)
+- [x] T015 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement the poll loop with a `(time_msc, ticket)` watermark: each iteration query `history_deals_get` over a clock-skew-widened window around `[watermark_second, now]` (Decision 8), sort candidates by `(time_msc, ticket)` ascending, skip any `(time_msc, ticket) <= watermark`, emit the remainder, advance the watermark (exactly-once + ordering, FR-006, Decision 3)
 - [x] T016 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, map each MT5 deal to a `TradeTransactionEvent` (deal_ticket, order→order_ticket, position_id→position_ticket, symbol, volume, price, profit, time_msc, verbatim `type`, verbatim `entry`) per data-model.md (FR-002, FR-003)
 - [x] T017 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, resolve poll cadence (unset → 1000 ms; `< 200` → clamp up to 200 ms) and `sleep(cadence)` between polls (FR-007)
 - [x] T018 [US1] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, emit a terminal in-band `Error` frame from `mt5.last_error()` on terminal/persistent lookup failure (retry a transient single-poll failure within the cadence before escalating), then end the stream (FR-009, Decision 6)
@@ -100,7 +100,7 @@ Multi-language repo (per plan.md):
 
 ### Implementation for User Story 2
 
-- [x] T026 [US2] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement start-point resolution at stream open — `start = (from_time_msc unset or 0) ? now_ms : max(from_time_msc, now_ms − 7*24*3600*1000)` — and initialize the watermark from `start` so the first poll backfills (or not) correctly (FR-004, FR-005, Decision 5)
+- [x] T026 [US2] In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, implement start-point resolution at stream open — explicit past `from_time_msc` ⇒ `max(from_time_msc, now_ms − 7*24*3600*1000)` initializing the watermark to `(start, UINT64_MAX)`; unset/0 ⇒ baseline the watermark on the newest existing deal at the first poll (server-time base, no replay) rather than the host clock (FR-004, FR-005, Decision 5, Decision 8)
 
 **Checkpoint**: US1 + US2 both work independently — live streaming with a controlled, bounded start point.
 
@@ -137,6 +137,21 @@ Multi-language repo (per plan.md):
 - [x] T035 Run full regression suites and confirm zero regressions (SC-005, FR-012): `python -m pytest mt5_grpc_server/tests -v` and `dotnet test mt5_grpc_client_csharp/MetaTrader.Grpc.Client.sln`
 - [x] T036 [P] Update documentation with a `SubscribeTradeTransactions` usage example (`await foreach` + `event` wrapper) and note the additive/backward-compatible contract change; keep examples in sync with `DocumentationAccuracyTests`
 - [x] T037 Run the quickstart.md verification path end-to-end and confirm the Definition-of-Done traceability table (SC-001…SC-007) is satisfied
+
+---
+
+## Phase 7: Post-Release Hotfix — broker server-time base (Decision 8)
+
+**Purpose**: Fix a defect found during live testing — on a broker whose server time
+is offset from the server host's UTC clock (e.g. EET, UTC+2/+3), a just-created deal
+fell outside the UTC-tight poll window and was never delivered (SC-001 broken), and
+the host-clock "start now" watermark could drop new deals or replay recent history
+(SC-002 at risk). Root cause: MT5 `history_deals_get`/`deal.time_msc` operate in the
+broker server-time base, but the poll window and default watermark were derived from
+`time.time()` (host UTC). No wire/contract change — server runtime only.
+
+- [x] T038 [P] Python regression tests in `mt5_grpc_server/tests/test_trade_events_stream.py`: (a) default start-now delivers a new deal whose `time_msc` is offset ahead **and** behind the host clock (parametrized), and (b) default start-now baselines an account's existing history without replay, then delivers a subsequently-appearing deal (SC-001, SC-002, Decision 8)
+- [x] T039 In `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py`, add `CLOCK_SKEW_MARGIN_MS` and (a) widen the poll window by that margin on both bounds and (b) for default start-now, defer the watermark to a first-poll baseline on the newest existing deal (server-time base) instead of seeding from `now_ms` (FR-005, Decision 8). Confirm all prior trade-events tests remain green.
 
 ---
 

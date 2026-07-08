@@ -46,10 +46,12 @@ pwsh mt5_grpc_client_csharp/scripts/check-generated.ps1
 
 - `mt5_grpc_server/mt5_grpc_server/imp/trade_events.py` — `TradeEventsServiceImpl`
   with `SubscribeTradeTransactions(request, context)` implemented as a generator:
-  resolve start (`now` / 7-day-capped) and cadence (default 1000, floor 200), then
-  loop `poll → yield ordered new events → advance (time_msc,ticket) watermark →
-  sleep(cadence)`, exiting when `context.is_active()` is false. Populate an in-band
-  `Error` from `mt5.last_error()` on terminal/persistent failure, then end.
+  resolve start (explicit past ⇒ 7-day-capped watermark; `now` ⇒ first-poll baseline
+  on the newest existing deal, in the server-time base — Decision 8) and cadence
+  (default 1000, floor 200), then loop `poll (clock-skew-widened window) → yield
+  ordered new events → advance (time_msc,ticket) watermark → sleep(cadence)`, exiting
+  when `context.is_active()` is false. Populate an in-band `Error` from
+  `mt5.last_error()` on terminal/persistent failure, then end.
 - `imp/__init__.py` — add `from .trade_events import *`.
 - `grpc_server.py` — register
   `trade_events_pb2_grpc.add_TradeEventsServiceServicer_to_server(TradeEventsServiceImpl(), server)`

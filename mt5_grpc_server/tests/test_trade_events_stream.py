@@ -224,6 +224,40 @@ def test_us2_default_start_now_delivers_zero_history(monkeypatch):
     assert events == [], "historical deals before 'now' are not replayed"
 
 
+@pytest.mark.parametrize("server_offset_ms", [
+    3 * 3600 * 1000,    # broker server time ahead of host UTC (e.g. EET, UTC+3)
+    -5 * 3600 * 1000,   # broker server time behind host UTC (e.g. UTC-5)
+])
+def test_us2_default_start_now_delivers_new_deal_across_clock_offset(monkeypatch, server_offset_ms):
+    """Regression: MT5 deal times are in the broker server-time base, which may be
+    offset from the host UTC clock. A deal created after subscription (empty prior
+    history) must still be delivered under default 'start now', regardless of the
+    offset's sign — the watermark must not be a host-UTC 'now' floor."""
+    # Empty history at baseline, then a live deal whose time_msc reflects server time.
+    live = make_deal(ticket=500, time_msc=NOW_MS + server_offset_ms)
+    harness = Harness(monkeypatch, polls=[[], [live], []], stop_after_cycles=3)
+    request = SubscribeTradeTransactionsRequest()  # no start time -> now
+
+    events = harness.run(request)
+
+    assert [e.deal_ticket for e in events] == [500], "new deal delivered despite clock offset"
+
+
+def test_us2_default_start_now_baselines_existing_then_delivers_new(monkeypatch):
+    """Default 'start now' on an account with prior history: the existing deals are
+    absorbed as the baseline (no replay) and only a subsequently-appearing deal is
+    delivered, with the watermark tracked in the deals' own time base."""
+    existing = [make_deal(ticket=10, time_msc=NOW_MS + 3_600_000),
+                make_deal(ticket=11, time_msc=NOW_MS + 3_600_500)]
+    new = make_deal(ticket=12, time_msc=NOW_MS + 3_601_000)
+    harness = Harness(monkeypatch, polls=[existing, existing + [new], []], stop_after_cycles=3)
+    request = SubscribeTradeTransactionsRequest()
+
+    events = harness.run(request)
+
+    assert [e.deal_ticket for e in events] == [12], "no replay of baseline history; new deal delivered"
+
+
 def test_us2_explicit_past_start_backfills_once_in_order(monkeypatch):
     """US2 acceptance #2: explicit past start backfills once, in order, then live."""
     start = NOW_MS - 10_000

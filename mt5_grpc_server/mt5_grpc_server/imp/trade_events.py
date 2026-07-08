@@ -17,6 +17,13 @@ DEFAULT_POLL_INTERVAL_MS = 1000
 # Maximum historical backfill window (ms) — bounds one-shot replay and start-up
 # cost (FR-004).
 MAX_BACKFILL_MS = 7 * 24 * 3600 * 1000
+# Tolerance (ms) for the offset between the host clock (``time.time()``, UTC) and
+# the broker's server-time base that MT5 deal timestamps and ``history_deals_get``
+# use. MT5 filters history by server time; on a broker whose server is hours ahead
+# of/behind UTC, a UTC-tight window would exclude an otherwise-new deal entirely.
+# This margin only widens the *query* window — exactly-once/ordering is still
+# enforced by the precise ``(time_msc, ticket)`` watermark filter below.
+CLOCK_SKEW_MARGIN_MS = 24 * 3600 * 1000
 # Larger than any real MT5 deal ticket; used as the initial watermark ticket so
 # the resolved start time is treated as "already seen up to this instant". This
 # makes the default-start-now case replay nothing and a resume from the last
@@ -99,26 +106,43 @@ class TradeEventsServiceImpl(TradeEventsServiceServicer):
         ends the stream (FR-009).
         """
         now_ms = self._now_ms()
-        start_ms = self._resolve_start_ms(request, now_ms)
         cadence_ms = self._resolve_cadence_ms(request)
         cadence_seconds = cadence_ms / 1000.0
 
-        # Watermark = last delivered (time_msc, ticket). Initialised to the resolved
-        # start with a sentinel ticket so nothing at or before the start instant is
-        # replayed (default-start-now delivers zero history; resume drops the deal
-        # at exactly the resume time). Live ties are then handled by the real
-        # (time_msc, ticket) tuple as the watermark advances (FR-006, Decision 3).
-        watermark = (start_ms, _UINT64_MAX)
+        # Watermark = last delivered (time_msc, ticket); its time component is always
+        # in MT5's server-time base once it tracks a real deal (FR-006, Decision 3).
+        explicit_start = request.HasField('from_time_msc') and request.from_time_msc > 0
+        if explicit_start:
+            # Replay from an explicit past instant (clamped to the 7-day cap). The
+            # sentinel ticket drops any deal at exactly the start instant on resume.
+            watermark = (self._resolve_start_ms(request, now_ms), _UINT64_MAX)
+            baseline_pending = False
+        else:
+            # "Start now": defer establishing the watermark to the first poll so it
+            # can be baselined on the newest deal MT5 already knows about. That keeps
+            # the watermark in the server-time base (immune to host/broker clock
+            # offset) and replays nothing. The floor here only applies if the account
+            # has no history in the backfill window, so the first live deal still
+            # exceeds it regardless of the clock offset's sign.
+            watermark = (now_ms - MAX_BACKFILL_MS, _UINT64_MAX)
+            baseline_pending = True
 
         while context.is_active():
-            # Query from the watermark's floored second: MT5 time filters are
-            # second-granular, so querying from the second is a superset; the
-            # precise tuple filter below removes the re-fetched boundary deals,
+            now_ms = self._now_ms()
+            # Offset-tolerant query window (see CLOCK_SKEW_MARGIN_MS): widen both
+            # bounds so a host/server clock offset can't exclude a genuinely new
+            # deal. The precise tuple filter below still removes re-fetched deals,
             # guaranteeing no gap and no duplicate.
+            from_ms = max(
+                0,
+                now_ms - MAX_BACKFILL_MS,
+                min(watermark[0], now_ms) - CLOCK_SKEW_MARGIN_MS,
+            )
             date_from = datetime.datetime.fromtimestamp(
-                watermark[0] // 1000, tz=datetime.timezone.utc)
+                from_ms // 1000, tz=datetime.timezone.utc)
             date_to = datetime.datetime.fromtimestamp(
-                self._now_ms() // 1000 + 1, tz=datetime.timezone.utc)
+                now_ms // 1000 + CLOCK_SKEW_MARGIN_MS // 1000 + 1,
+                tz=datetime.timezone.utc)
 
             try:
                 deals = mt5.history_deals_get(date_from, date_to)
@@ -131,15 +155,23 @@ class TradeEventsServiceImpl(TradeEventsServiceServicer):
                 yield self._error_event("Failed to get trade transactions")
                 return
 
-            new_deals = sorted(
-                (d for d in deals if (d.time_msc, d.ticket) > watermark),
-                key=lambda d: (d.time_msc, d.ticket),
-            )
+            if baseline_pending:
+                # First poll under "start now": treat every deal that already exists
+                # as seen (baseline on the newest key) and deliver nothing from it.
+                baseline_pending = False
+                keys = [(d.time_msc, d.ticket) for d in deals]
+                if keys:
+                    watermark = max(keys)
+            else:
+                new_deals = sorted(
+                    (d for d in deals if (d.time_msc, d.ticket) > watermark),
+                    key=lambda d: (d.time_msc, d.ticket),
+                )
 
-            for mt5_deal in new_deals:
-                if not context.is_active():
-                    return
-                yield self._convert_deal_to_event(mt5_deal)
-                watermark = (mt5_deal.time_msc, mt5_deal.ticket)
+                for mt5_deal in new_deals:
+                    if not context.is_active():
+                        return
+                    yield self._convert_deal_to_event(mt5_deal)
+                    watermark = (mt5_deal.time_msc, mt5_deal.ticket)
 
             time.sleep(cadence_seconds)
