@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     The publish workflow triggers on tags of the form:
-        csharp-client-v<X.Y.Z>            (stable,      e.g. csharp-client-v0.2.0)
-        csharp-client-v<X.Y.Z>-<label>    (pre-release, e.g. csharp-client-v0.3.0-preview.1)
+        v<X.Y.Z>            (stable,      e.g. v0.3.0)
+        v<X.Y.Z>-<label>    (pre-release, e.g. v0.3.0-preview.1)
 
     This guard extracts the version from the tag, compares it to <Version> in
     MetaTrader.Grpc.Client.csproj, and exits non-zero on any mismatch - run BEFORE
@@ -24,10 +24,10 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 if ([string]::IsNullOrWhiteSpace($Tag)) {
-    throw "No tag supplied. Pass -Tag 'csharp-client-v<X.Y.Z>' or set GITHUB_REF_NAME."
+    throw "No tag supplied. Pass -Tag 'v<X.Y.Z>' or set GITHUB_REF_NAME."
 }
 
-$prefix = "csharp-client-v"
+$prefix = "v"
 if (-not $Tag.StartsWith($prefix)) {
     throw "Tag '$Tag' does not start with the required prefix '$prefix'."
 }

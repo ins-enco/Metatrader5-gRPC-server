@@ -1,18 +1,20 @@
 name: csharp-client-publish
 
 # Client-scoped, tag-triggered publish of MetaTrader.Grpc.Client to the
-# organization's GitHub Packages NuGet registry. Independent of the server's
-# v*.*.* Docker release (docker-ghcr.yml). See
+# organization's GitHub Packages NuGet registry. See
 # specs/004-client-package-distribution/ (Contract C).
 #
+# NOTE: This now shares the v*.*.* tag trigger with the server's Docker release
+# (docker-ghcr.yml); a single v<X.Y.Z> tag fires both workflows.
+#
 # Trigger:
-#   git tag csharp-client-v<X.Y.Z>            # stable
-#   git tag csharp-client-v<X.Y.Z>-<label>    # pre-release
+#   git tag v<X.Y.Z>            # stable
+#   git tag v<X.Y.Z>-<label>    # pre-release
 #   git push origin <tag>
 on:
   push:
     tags:
-      - "csharp-client-v*"
+      - "v*.*.*"
 
 permissions:
   contents: read
