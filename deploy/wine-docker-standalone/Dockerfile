@@ -20,7 +20,9 @@ ARG MT5_WARMUP_DELAY=120
 # Wine branch from the official WineHQ repo. Ubuntu 24.04's own `wine` package is
 # too old for current MetaTrader 5 builds (terminal64.exe crashes with an
 # "Unhandled illegal instruction"), so we pull a modern Wine from WineHQ instead.
-ARG WINE_BRANCH=staging
+# Use `stable` (production, boots reliably headless) rather than `staging` --
+# staging is a testing branch and its wineboot hangs during a headless build.
+ARG WINE_BRANCH=stable
 
 # Install a modern Wine from WineHQ (Ubuntu 24.04 = "noble").
 RUN dpkg --add-architecture i386 \
