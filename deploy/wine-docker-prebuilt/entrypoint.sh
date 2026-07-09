@@ -31,6 +31,15 @@ fi
 python_exe='C:\Python311\python.exe'
 mt5_terminal_path="${MT5_TERMINAL_PATH:-C:\Program Files\MetaTrader 5\terminal64.exe}"
 
+# The Wine prefix is baked at build time, but each container is a fresh
+# environment: bring up wineserver/services and re-assert the Windows version
+# before launching the terminal. Without this, the baked terminal64.exe crashes
+# with "wine: Unhandled illegal instruction" (the bootstrap image runs the same
+# init every start — see deploy/wine-docker/entrypoint.sh).
+wineboot --init
+wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d "win10" /f
+wineserver -w
+
 # Generate an MT5 startup config so the headless terminal enables AutoTrading
 # automatically (there is no GUI to click the "Algo Trading" button under Xvfb).
 # [Experts] Enabled=1 turns on the AutoTrading toolbar button; AllowLiveTrading=1
