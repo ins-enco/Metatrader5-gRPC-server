@@ -69,4 +69,17 @@ if [ ! -f "${mt5_terminal_file}" ]; then
     exit 1
 fi
 
+# Warm-up: run the freshly installed terminal once so it downloads and applies
+# its own self-update BEFORE we bake the image. Without this, the first real run
+# inside a container would have to self-update terminal64.exe while it is being
+# used. Non-fatal: a crash here must not fail the build.
+mt5_warmup_delay="${MT5_WARMUP_DELAY:-120}"
+echo "==> Warming up MetaTrader 5 (self-update) for ${mt5_warmup_delay}s"
+wine "${mt5_terminal_file}" /portable >/tmp/mt5-warmup.log 2>&1 &
+warmup_pid="$!"
+sleep "${mt5_warmup_delay}"
+wineserver -k >/dev/null 2>&1 || true
+kill "${warmup_pid}" >/dev/null 2>&1 || true
+wait "${warmup_pid}" 2>/dev/null || true
+
 echo "==> MetaTrader 5 baked into image at ${mt5_terminal_file}"

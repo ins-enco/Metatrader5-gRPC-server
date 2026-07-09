@@ -16,19 +16,26 @@ ARG PYTHON_VERSION=3.11.9
 ARG NUMPY_SPEC="numpy<2"
 ARG MT5_SETUP_URL="https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
 ARG MT5_INSTALL_TIMEOUT=600
+ARG MT5_WARMUP_DELAY=120
+# Wine branch from the official WineHQ repo. Ubuntu 24.04's own `wine` package is
+# too old for current MetaTrader 5 builds (terminal64.exe crashes with an
+# "Unhandled illegal instruction"), so we pull a modern Wine from WineHQ instead.
+ARG WINE_BRANCH=staging
 
+# Install a modern Wine from WineHQ (Ubuntu 24.04 = "noble").
 RUN dpkg --add-architecture i386 \
     && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates wget gnupg \
+    && mkdir -pm755 /etc/apt/keyrings \
+    && wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key \
+    && wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources \
+    && apt-get update \
+    && apt-get install -y --install-recommends "winehq-${WINE_BRANCH}" \
     && apt-get install -y --no-install-recommends \
-        ca-certificates \
         cabextract \
         unzip \
-        wget \
         winetricks \
         xvfb \
-        wine \
-        wine64 \
-        wine32 \
         winbind \
     && rm -rf /var/lib/apt/lists/*
 
@@ -47,6 +54,7 @@ RUN chmod +x /tmp/build-install.sh \
     && NUMPY_SPEC="${NUMPY_SPEC}" \
        MT5_SETUP_URL="${MT5_SETUP_URL}" \
        MT5_INSTALL_TIMEOUT="${MT5_INSTALL_TIMEOUT}" \
+       MT5_WARMUP_DELAY="${MT5_WARMUP_DELAY}" \
        /tmp/build-install.sh \
     && rm -f /tmp/build-install.sh
 
