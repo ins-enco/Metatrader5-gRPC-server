@@ -1,0 +1,32 @@
+# Example: run several fully independent containers from the same self-contained
+# image. There are NO volumes -- each container carries its own baked Wine prefix
+# (copy-on-write), so instances never share state with one another.
+services:
+  mt5-grpc-app-a:
+    image: ghcr.io/ins-enco/mt5-grpc-server-standalone:latest
+    container_name: mt5-grpc-app-a
+    ports:
+      - "127.0.0.1:50051:50051"
+    environment:
+      WINEPREFIX: /wineprefix
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50051
+      GRPC_VERBOSE: "true"
+      MT5_STARTUP_DELAY: "20"
+      # MT5_LOGIN / MT5_PASSWORD / MT5_SERVER can be set per instance.
+    shm_size: "1gb"
+    restart: unless-stopped
+
+  mt5-grpc-app-b:
+    image: ghcr.io/ins-enco/mt5-grpc-server-standalone:latest
+    container_name: mt5-grpc-app-b
+    ports:
+      - "127.0.0.1:50052:50051"
+    environment:
+      WINEPREFIX: /wineprefix
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50051
+      GRPC_VERBOSE: "true"
+      MT5_STARTUP_DELAY: "20"
+    shm_size: "1gb"
+    restart: unless-stopped
