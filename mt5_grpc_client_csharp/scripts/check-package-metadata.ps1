@@ -30,13 +30,30 @@ Set-StrictMode -Version Latest
 $root    = Resolve-Path (Join-Path $PSScriptRoot "..")
 $project = Join-Path $root "src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj"
 
-# Expected runtime dependency set (Contract A). Grpc.Tools MUST NOT appear.
+# Expected runtime dependency set common to every target (Contract A).
+# Grpc.Tools MUST NOT appear in any group.
 $expectedDeps = @{
     "Google.Protobuf"                           = "3.29.3"
     "Grpc.Core.Api"                             = "2.71.0"
     "Grpc.Net.Client"                           = "2.71.0"
     "Microsoft.Bcl.AsyncInterfaces"             = "9.0.0"
     "Microsoft.Extensions.Logging.Abstractions" = "9.0.0"
+}
+
+# The .NET Framework (net472) target additionally carries the legacy Grpc.Core
+# native channel (Mt5GrpcClientFactory.CreateCore). Modern (netstandard2.0)
+# consumers MUST NOT pull it in. See the net472-conditional ItemGroup in
+# MetaTrader.Grpc.Client.csproj and the 4.1.0 release notes.
+$frameworkOnlyDeps = @{
+    "Grpc.Core" = "2.46.6"
+}
+
+# Each shipped TFM group must declare EXACTLY the runtime set below. The package
+# multi-targets netstandard2.0 + net472; a missing or extra group, or a group
+# whose dependency set differs, is a contract violation.
+$expectedGroups = @{
+    ".NETStandard2.0"    = $expectedDeps
+    ".NETFramework4.7.2" = ($expectedDeps + $frameworkOnlyDeps)
 }
 
 function Get-CsprojValue {
@@ -122,38 +139,62 @@ try {
             }
         }
 
-        # --- target framework netstandard2.0 (T005, FR-004/SC-003) ---
-        # dependencies are grouped by targetFramework; also assert the group TFM.
+        # --- per-TFM dependency groups (T005, FR-003/FR-004/SC-002/SC-003) ---
+        # The package multi-targets netstandard2.0 + net472. Each TFM group must
+        # declare EXACTLY its expected runtime set: the net472 group additionally
+        # carries Grpc.Core (native channel), netstandard2.0 must NOT. Grpc.Tools
+        # must never leak into any group (PrivateAssets=all).
         $depGroups = @()
         if ($meta.dependencies) { $depGroups = @($meta.dependencies.group) }
-        $tfms = $depGroups | ForEach-Object { $_.targetFramework } | Where-Object { $_ }
-        if (-not ($tfms -contains ".NETStandard2.0")) {
-            $failures.Add("nuspec dependency group targetFramework is not '.NETStandard2.0' (found: $($tfms -join ', ')).")
-        }
 
-        # --- exact runtime dependency set, no Grpc.Tools (T005, FR-003/SC-002) ---
-        $actualDeps = @{}
+        $actualGroups = @{}
         foreach ($g in $depGroups) {
+            $tfm = [string]$g.targetFramework
+            if ([string]::IsNullOrWhiteSpace($tfm)) {
+                $failures.Add("Found a dependency group with no targetFramework.")
+                continue
+            }
+            $deps = @{}
             foreach ($d in @($g.dependency)) {
-                if ($d -and $d.id) { $actualDeps[$d.id] = $d.version }
+                if ($d -and $d.id) { $deps[$d.id] = $d.version }
+            }
+            $actualGroups[$tfm] = $deps
+        }
+
+        # every required TFM group is present, and no unexpected group ships
+        foreach ($tfm in $expectedGroups.Keys) {
+            if (-not $actualGroups.ContainsKey($tfm)) {
+                $failures.Add("Missing expected dependency group targetFramework '$tfm' (found: $($actualGroups.Keys -join ', ')).")
+            }
+        }
+        foreach ($tfm in $actualGroups.Keys) {
+            if (-not $expectedGroups.ContainsKey($tfm)) {
+                $failures.Add("Unexpected dependency group targetFramework '$tfm' (not in the declared target set).")
             }
         }
 
-        if ($actualDeps.ContainsKey("Grpc.Tools")) {
-            $failures.Add("Grpc.Tools leaked into the consumer dependency graph (must be PrivateAssets=all).")
-        }
+        # each present-and-expected group declares exactly its runtime set, no Grpc.Tools
+        foreach ($tfm in $expectedGroups.Keys) {
+            if (-not $actualGroups.ContainsKey($tfm)) { continue }
+            $actual   = $actualGroups[$tfm]
+            $expected = $expectedGroups[$tfm]
 
-        foreach ($id in $expectedDeps.Keys) {
-            if (-not $actualDeps.ContainsKey($id)) {
-                $failures.Add("Missing expected runtime dependency '$id'.")
-            } elseif (-not ([string]$actualDeps[$id]).Contains($expectedDeps[$id])) {
-                $failures.Add("Dependency '$id' version '$($actualDeps[$id])' does not include expected '$($expectedDeps[$id])'.")
+            if ($actual.ContainsKey("Grpc.Tools")) {
+                $failures.Add("[$tfm] Grpc.Tools leaked into the consumer dependency graph (must be PrivateAssets=all).")
             }
-        }
 
-        foreach ($id in $actualDeps.Keys) {
-            if (-not $expectedDeps.ContainsKey($id)) {
-                $failures.Add("Unexpected runtime dependency '$id' (not in the declared runtime set).")
+            foreach ($id in $expected.Keys) {
+                if (-not $actual.ContainsKey($id)) {
+                    $failures.Add("[$tfm] Missing expected runtime dependency '$id'.")
+                } elseif (-not ([string]$actual[$id]).Contains($expected[$id])) {
+                    $failures.Add("[$tfm] Dependency '$id' version '$($actual[$id])' does not include expected '$($expected[$id])'.")
+                }
+            }
+
+            foreach ($id in $actual.Keys) {
+                if (-not $expected.ContainsKey($id)) {
+                    $failures.Add("[$tfm] Unexpected runtime dependency '$id' (not in the declared runtime set for this target).")
+                }
             }
         }
 
@@ -188,8 +229,9 @@ if ($failures.Count -gt 0) {
 Write-Host ""
 Write-Host "Package metadata check passed:" -ForegroundColor Green
 Write-Host "  version                = $expectedVersion"
-Write-Host "  target framework       = netstandard2.0"
+Write-Host "  target frameworks      = $($expectedGroups.Keys -join ', ')"
 Write-Host "  runtime dependencies   = $($expectedDeps.Keys -join ', ')"
+Write-Host "  net472-only dependency = $($frameworkOnlyDeps.Keys -join ', ') (native channel)"
 Write-Host "  Grpc.Tools excluded    = yes"
 Write-Host "  README.md packed       = yes"
 Write-Host "  proto contract id      = $expectedContractId (in README + releaseNotes)"
