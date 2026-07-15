@@ -4,7 +4,7 @@ using Grpc.Net.Client;
 
 namespace MetaTrader.Grpc.Client
 {
-    public static class Mt5GrpcClientFactory
+    public static partial class Mt5GrpcClientFactory
     {
         public static GrpcChannel CreateChannel(Mt5GrpcClientOptions options)
         {
@@ -19,7 +19,7 @@ namespace MetaTrader.Grpc.Client
             }
 
             AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-
+            
             var address = ResolveAddress(options);
             options.LoggerFactory?.CreateLogger("MetaTrader.Grpc.Client")
                 .ConnectionAttempt(address);

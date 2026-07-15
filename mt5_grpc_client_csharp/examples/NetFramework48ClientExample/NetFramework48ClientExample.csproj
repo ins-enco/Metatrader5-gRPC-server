@@ -6,7 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
-    <PackageReference Include="System.Net.Http.WinHttpHandler" Version="9.0.0" />
+    <!-- Grpc.Core (and its native runtime assets) flow transitively from the
+         library's net48 target; no direct WinHttpHandler reference is needed. -->
     <ProjectReference Include="..\..\src\MetaTrader.Grpc.Client\MetaTrader.Grpc.Client.csproj" />
   </ItemGroup>
 </Project>

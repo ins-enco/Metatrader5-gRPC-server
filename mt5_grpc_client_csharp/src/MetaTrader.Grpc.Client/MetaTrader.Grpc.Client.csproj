@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFrameworks>netstandard2.0;net472</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
     <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
@@ -27,6 +27,16 @@
     <PackageReference Include="Grpc.Tools" Version="2.71.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- The .NET Framework target carries the legacy Grpc.Core native channel so
+       consumers on Windows 10 / .NET Framework can use
+       Mt5GrpcClientFactory.CreateCore(). net472 assets are consumed by net472,
+       net48 and net481 alike, so a single FW target covers them all. Modern
+       (netstandard2.0) consumers never pull in the deprecated native lib. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageReference Include="Grpc.Core" Version="2.46.6" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net472" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

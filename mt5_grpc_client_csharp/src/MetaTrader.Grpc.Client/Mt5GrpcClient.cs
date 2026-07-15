@@ -1,5 +1,5 @@
 using System;
-using Grpc.Net.Client;
+using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Metatrader.V1;
 
@@ -7,12 +7,16 @@ namespace MetaTrader.Grpc.Client
 {
     public sealed partial class Mt5GrpcClient : IDisposable
     {
-        private readonly GrpcChannel channel;
+        // ChannelBase (not GrpcChannel) so the same client works with either the
+        // modern Grpc.Net.Client GrpcChannel or the legacy Grpc.Core.Channel. The
+        // latter carries its own native HTTP/2 stack, the only way to run gRPC on
+        // .NET Framework 4.8 / Windows 10 where WinHttpHandler lacks HTTP/2.
+        private readonly ChannelBase channel;
         private readonly bool ownsChannel;
         private readonly Mt5GrpcUnaryInvoker invoker;
         private readonly Mt5GrpcStreamingInvoker streamingInvoker;
 
-        internal Mt5GrpcClient(GrpcChannel channel, Mt5GrpcClientOptions options, bool ownsChannel)
+        internal Mt5GrpcClient(ChannelBase channel, Mt5GrpcClientOptions options, bool ownsChannel)
         {
             this.channel = channel ?? throw new ArgumentNullException(nameof(channel));
             this.ownsChannel = ownsChannel;
@@ -61,9 +65,20 @@ namespace MetaTrader.Grpc.Client
 
         public void Dispose()
         {
-            if (ownsChannel)
+            if (!ownsChannel)
             {
-                channel.Dispose();
+                return;
+            }
+
+            // GrpcChannel implements IDisposable; Grpc.Core.Channel does not and is
+            // torn down via ShutdownAsync instead.
+            if (channel is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            else
+            {
+                channel.ShutdownAsync().GetAwaiter().GetResult();
             }
         }
     }
