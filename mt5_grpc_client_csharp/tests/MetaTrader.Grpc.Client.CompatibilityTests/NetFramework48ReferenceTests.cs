@@ -17,15 +17,20 @@ namespace MetaTrader.Grpc.Client.CompatibilityTests
         }
 
         [Fact]
-        public void NetFramework48_example_targets_net48_and_uses_winhttphandler()
+        public void NetFramework48_example_targets_net48_and_uses_grpc_core_channel()
         {
             var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
             var project = File.ReadAllText(Path.Combine(root, "examples", "NetFramework48ClientExample", "NetFramework48ClientExample.csproj"));
             var program = File.ReadAllText(Path.Combine(root, "examples", "NetFramework48ClientExample", "Program.cs"));
 
             Assert.Contains("<TargetFramework>net48</TargetFramework>", project);
-            Assert.Contains("System.Net.Http.WinHttpHandler", project);
-            Assert.Contains("WinHttpHandler", program);
+            // WinHttpHandler lacks HTTP/2 on Windows 10, so the example no longer
+            // references that package. It connects through the native Grpc.Core channel
+            // via CreateCore, which flows transitively from the library's .NET Framework
+            // target. (Match the package id, not the bare word, so explanatory comments
+            // mentioning WinHttpHandler don't trip this assertion.)
+            Assert.DoesNotContain("System.Net.Http.WinHttpHandler", project);
+            Assert.Contains("Mt5GrpcClientFactory.CreateCore", program);
         }
 
         [Fact]
