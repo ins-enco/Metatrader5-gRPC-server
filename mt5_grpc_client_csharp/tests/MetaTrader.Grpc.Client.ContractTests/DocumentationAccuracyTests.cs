@@ -87,6 +87,42 @@ namespace MetaTrader.Grpc.Client.ContractTests
             Assert.Equal(expected, namedValueNumber);
         }
 
+        [Fact]
+        public void Readme_documents_every_lifecycle_category_and_safety_rule()
+        {
+            var readme = File.ReadAllText(Path.Combine(RepoClientRoot(), "README.md"));
+
+            Assert.Contains("OpenOrderAsync", readme);
+            Assert.Contains("ClosePositionAsync", readme);
+            Assert.Contains("ModifyTradeAsync", readme);
+            Assert.Contains("ClosePositionByAsync", readme);
+            Assert.Contains("ClosePositionsByAsync", readme);
+            Assert.Contains("full close", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("partial close", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ExecutionStatus", readme);
+            Assert.Contains("hedging account", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("non-atomic", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("do not retry", readme, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData("NetStandardClientExample")]
+        [InlineData("NetFramework48ClientExample")]
+        public void Runnable_examples_cover_all_lifecycle_operations_and_result_inspection(string project)
+        {
+            var program = File.ReadAllText(Path.Combine(RepoClientRoot(), "examples", project, "Program.cs"));
+
+            Assert.Contains("OpenOrderAsync", program);
+            Assert.Contains("ClosePositionAsync", program);
+            Assert.Contains("ModifyTradeAsync", program);
+            Assert.Contains("ClosePositionByAsync", program);
+            Assert.Contains("ClosePositionsByAsync", program);
+            Assert.Contains("CallResult", program);
+            Assert.Contains("ExecutionStatus", program);
+            Assert.Contains("non-atomic", program, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("retry", program, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string MigrationGuidePath()
         {
             return Path.Combine(RepoClientRoot(), "MIGRATION.md");

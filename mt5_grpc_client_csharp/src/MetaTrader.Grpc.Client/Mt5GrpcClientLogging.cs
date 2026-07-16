@@ -24,5 +24,33 @@ namespace MetaTrader.Grpc.Client
         {
             logger?.LogWarning("MT5 operation {Operation} returned error {Mt5ErrorCode}: {Mt5ErrorMessage}", error.Operation, error.Mt5ErrorCode, error.Mt5ErrorMessage);
         }
+
+        public static void LifecycleOperationStatus(
+            this ILogger? logger,
+            TradeLifecycleOperation operation,
+            bool callSucceeded,
+            TradeExecutionStatus? executionStatus,
+            int? rawRetcode)
+        {
+            logger?.LogInformation(
+                "MT5 lifecycle operation {LifecycleOperation} completed with call success {CallSucceeded}, execution status {ExecutionStatus}, and retcode {RawRetcode}.",
+                operation,
+                callSucceeded,
+                executionStatus,
+                rawRetcode);
+        }
+
+        public static void CloseByBatchItemStatus(
+            this ILogger? logger,
+            int pairIndex,
+            PairAttemptState attemptState,
+            TradeExecutionStatus? executionStatus)
+        {
+            logger?.LogInformation(
+                "MT5 lifecycle batch item {PairIndex} ended with attempt state {AttemptState} and execution status {ExecutionStatus}.",
+                pairIndex,
+                attemptState,
+                executionStatus);
+        }
     }
 }

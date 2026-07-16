@@ -141,3 +141,14 @@ cython_debug/
 /mt5_grpc_client_csharp/.vs/
 /.claude/skills/
 /.claude/settings.local.json
+
+# Baked Wine prefix snapshot for the prebuilt image — large binary artifact,
+# exported per-host from a working bootstrap volume; never commit it.
+/deploy/wine-docker-prebuilt/wineprefix.tar.gz
+
+# Cross-platform editor, temporary, and environment artifacts.
+.vscode/
+Thumbs.db
+*.tmp
+*.swp
+.env*
