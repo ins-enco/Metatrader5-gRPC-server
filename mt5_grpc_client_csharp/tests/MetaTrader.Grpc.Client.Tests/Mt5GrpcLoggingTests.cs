@@ -49,6 +49,11 @@ namespace MetaTrader.Grpc.Client.Tests
                     })),
                 (request, deadline, cancellationToken) => Task.FromResult(
                     Mt5GrpcResult<PositionsGetResponse>.Success(new PositionsGetResponse())),
+                (request, deadline, cancellationToken) => Task.FromResult(
+                    Mt5GrpcResult<SymbolInfoResponse>.Success(new SymbolInfoResponse
+                    {
+                        SymbolInfo = new SymbolInfo()
+                    })),
                 logger: logger);
 
             await executor.OpenOrderAsync(new OpenOrderRequest(

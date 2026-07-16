@@ -29,20 +29,28 @@ raw MT5 action.
 Validation failure creates a structured failed call result and performs zero
 order submissions.
 
-### `ClosePositionRequest`
+### `ClosePositionAsync` scalar input
 
-Caller-supplied current position facts plus execution options. No account lookup
-is performed.
+| Parameter | C# type | Required | Rules / mapping |
+|-----------|---------|----------|-----------------|
+| `positionTicket` | `long` | yes | Greater than zero; used for a ticket-filtered position lookup and maps to `position`. |
+| `volume` | `double?` | no | Null = retrieved full current volume; otherwise positive, finite, and no greater than the retrieved current volume. |
 
-| Field | C# type | Required | Rules / mapping |
-|-------|---------|----------|-----------------|
-| `PositionTicket` | `long` | yes | Greater than zero; maps to `position`. |
-| `Symbol` | `string` | yes | Nonblank; maps to `symbol`. |
-| `Side` | `PositionSide` | yes | BUY maps to SELL request type; SELL maps to BUY. |
-| `CurrentVolume` | `double` | yes | Positive and finite; is the full-close volume. |
-| `Volume` | `double?` | no | Null = full close; otherwise positive, finite, and no greater than `CurrentVolume`. |
-| `Price` | `double?` | no | Optional for execution modes where MT5 does not require price; finite if present. |
-| `Deviation`, `FillingPolicy`, `Magic`, `Comment` | existing scalar/enum/string types | no | Copied to the new DEAL request. |
+The position lookup supplies symbol, side, current volume, and magic. A symbol
+lookup supplies execution mode, allowed fill flags, and bid/ask when price is
+required. BUY maps to a SELL deal and SELL maps to BUY. Request, instant, and
+exchange execution use RETURN with bid/ask; market execution
+prefers allowed FOK and falls back to allowed IOC. One effective deadline and
+cancellation token are shared across both lookups and the one possible send.
+
+### `CloseOrderAsync` scalar input
+
+| Parameter | C# type | Required | Rules / mapping |
+|-----------|---------|----------|-----------------|
+| `orderTicket` | `long` | yes | Greater than zero; maps to `order` with action REMOVE. |
+
+No order, position, or symbol lookup is required. Valid input sends once; invalid
+input sends nothing.
 
 ### `ModifyTradeRequest`
 
@@ -111,7 +119,7 @@ Result of one dedicated order submission.
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `Operation` | `TradeLifecycleOperation` | Open, Close, ModifyPosition, ModifyPendingOrder, or CloseBy. |
+| `Operation` | `TradeLifecycleOperation` | Open, Close, CloseOrder, ModifyPosition, ModifyPendingOrder, or CloseBy. |
 | `CallResult` | `Mt5GrpcResult<OrderSendResponse>` | Existing success/shared-error/transport/cancellation/deadline information. |
 | `ExecutionStatus` | `TradeExecutionStatus?` | Null when no response; otherwise derived from raw retcode, with missing result = Unknown. |
 | `RawRetcode` | `int?` convenience | Exact `TradeResult.Retcode` when available; never replaces the response. |
@@ -204,8 +212,9 @@ decision and stops the batch with retained prior outcomes.
 ## Relationships to existing protobuf entities
 
 ```text
-operation DTO -> new TradeRequest -> existing OrderSendRequest -> SendOrder RPC
-                                                        -> TradeOperationResult
+operation DTO/scalars -> optional lookup(s) -> new TradeRequest
+                     -> existing OrderSendRequest -> SendOrder RPC
+                                                  -> TradeOperationResult
 
 ClosePositionsByRequest -> PositionsGetRequest(symbol) -> frozen Position set
 frozen Position set + refreshed Position set -> CloseByPairOutcome[]

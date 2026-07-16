@@ -494,7 +494,12 @@ namespace MetaTrader.Grpc.Client.Tests
         {
             public BatchHarness(TimeSpan? defaultDeadline = null, Func<DateTime>? utcNow = null)
             {
-                Executor = new TradeLifecycleExecutor(SendAsync, GetPositionsAsync, defaultDeadline, utcNow: utcNow);
+                Executor = new TradeLifecycleExecutor(
+                    SendAsync,
+                    GetPositionsAsync,
+                    GetSymbolInfoAsync,
+                    defaultDeadline,
+                    utcNow: utcNow);
             }
 
             public TradeLifecycleExecutor Executor { get; }
@@ -502,6 +507,17 @@ namespace MetaTrader.Grpc.Client.Tests
             public Queue<Mt5GrpcResult<OrderSendResponse>> Sends { get; } = new Queue<Mt5GrpcResult<OrderSendResponse>>();
             public List<PositionCall> PositionCalls { get; } = new List<PositionCall>();
             public List<SendCall> SendCalls { get; } = new List<SendCall>();
+
+            private static Task<Mt5GrpcResult<SymbolInfoResponse>> GetSymbolInfoAsync(
+                SymbolInfoRequest request,
+                DateTime? deadline,
+                CancellationToken cancellationToken)
+            {
+                return Task.FromResult(Mt5GrpcResult<SymbolInfoResponse>.Success(new SymbolInfoResponse
+                {
+                    SymbolInfo = new SymbolInfo()
+                }));
+            }
 
             private Task<Mt5GrpcResult<OrderSendResponse>> SendAsync(
                 OrderSendRequest request,

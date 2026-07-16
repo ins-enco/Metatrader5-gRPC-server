@@ -28,7 +28,7 @@
 
 **CRITICAL**: No user-story implementation begins until this phase is complete.
 
-- [X] T003 [P] Create immutable/snapshotted `OpenOrderRequest`, `ClosePositionRequest`, `ModifyTradeRequest`, `PositionModification`, `PendingOrderModification`, `CloseByRequest`, and `ClosePositionsByRequest` DTOs with constructor-required fields and optional values in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/TradeLifecycleRequests.cs`
+- [X] T003 [P] Create immutable/snapshotted `OpenOrderRequest`, `ModifyTradeRequest`, `PositionModification`, `PendingOrderModification`, `CloseByRequest`, and `ClosePositionsByRequest` DTOs with constructor-required fields and optional values in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/TradeLifecycleRequests.cs`
 - [X] T004 [P] Create `TradeLifecycleOperation`, `TradeExecutionStatus`, `TradeOperationResult`, `MultipleCloseByStatus`, `PairAttemptState`, `PositionRemainderReason`, `MultipleCloseByResult`, `CloseByPairOutcome`, and `PositionRemainder` with copied read-only collections and raw-response retention in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/TradeLifecycleResults.cs`
 - [X] T005 [P] Add `InternalsVisibleTo` access for `MetaTrader.Grpc.Client.Tests` without changing package targets or dependencies in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj`
 - [X] T006 Add failing tests for DONE, DONE_PARTIAL, PLACED, LOCKED, every documented rejection category, missing `TradeResult`, and unrecognized future retcodes in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/TradeExecutionClassifierTests.cs`
@@ -45,18 +45,18 @@
 
 **Goal**: Open market or pending orders and fully or partially close positions through explicit operations that issue exactly one send and expose separate call and execution outcomes.
 
-**Independent Test**: Submit one market open, one pending open, one full close, and one partial close through the dedicated methods; verify action/field mapping, raw result retention, zero calls on invalid input, exactly one send on valid input, and no lookup or retry.
+**Independent Test**: Submit one market open, one pending open, one ticket-only full close, one ticket/volume partial close, and one pending-order cancellation; verify action/field mapping, raw result retention, zero calls on invalid input, bounded documented lookups, exactly one send on valid input, and no retry.
 
 ### Tests for User Story 1
 
-- [X] T011 [P] [US1] Add failing mapping, validation, caller-immutability, zero-call, exactly-one-send, no-lookup, and no-retry tests for market/pending open and full/partial close in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/TradeLifecycleMappingTests.cs`
-- [X] T012 [P] [US1] Add failing public-surface tests for `OpenOrderAsync`, `ClosePositionAsync`, their request DTOs, optional deadline/cancellation parameters, and `TradeOperationResult` compatibility in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeLifecycleSurfaceTests.cs`
+- [X] T011 [P] [US1] Add failing mapping, validation, caller-immutability, zero-call, bounded-lookup, exactly-one-send, and no-retry tests for market/pending open, full/partial position close, and pending-order cancellation in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/TradeLifecycleMappingTests.cs`
+- [X] T012 [P] [US1] Add failing public-surface tests for `OpenOrderAsync`, scalar `ClosePositionAsync`, `CloseOrderAsync`, optional volume/deadline/cancellation parameters, and `TradeOperationResult` compatibility in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeLifecycleSurfaceTests.cs`
 
 ### Implementation for User Story 1
 
 - [X] T013 [US1] Implement market DEAL and pending PENDING validation/mapping, including order-type categories, finite values, stop-limit rules, time-policy/expiration rules, and cloned timestamps in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/TradeLifecycleExecutor.cs`
-- [X] T014 [US1] Implement full/partial position-close validation and opposite-side DEAL mapping using the caller's current-volume snapshot and no account lookup in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/TradeLifecycleExecutor.cs`
-- [X] T015 [US1] Add `OpenOrderAsync` and `ClosePositionAsync` wrappers that snapshot inputs, forward one deadline/token, delegate one send, classify the response, and never retry in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeLifecycle.cs`
+- [X] T014 [US1] Implement full/partial position-close validation and opposite-side DEAL mapping from one position lookup plus one symbol-info lookup, and pending-order REMOVE mapping without lookup, in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/TradeLifecycleExecutor.cs`
+- [X] T015 [US1] Add `OpenOrderAsync`, scalar `ClosePositionAsync`, and `CloseOrderAsync` wrappers that forward one effective deadline/token, delegate at most one send, classify the response, and never retry in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/Mt5GrpcClient.TradeLifecycle.cs`
 - [X] T016 [US1] Run the US1 tests in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/MetaTrader.Grpc.Client.Tests.csproj` and `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/MetaTrader.Grpc.Client.ContractTests.csproj`
 
 **Checkpoint**: User Story 1 is fully functional and independently testable as the MVP.
@@ -134,11 +134,11 @@
 
 **Purpose**: Complete documentation, examples, compatibility, observability, release metadata, and reproducible package verification across all stories.
 
-- [X] T036 [P] Document all five methods, full versus partial close, final-state modification, hedging constraints, call versus execution status, batch inspection/non-atomic behavior, and no-retry warnings in `mt5_grpc_client_csharp/README.md`
-- [X] T037 [P] Add independently runnable market/pending open, full/partial close, position/pending modification, single close-by, and batch result-inspection examples in `mt5_grpc_client_csharp/examples/NetStandardClientExample/Program.cs`
-- [X] T038 [P] Add supported-surface examples for the five lifecycle categories in `mt5_grpc_client_csharp/examples/NetFramework48ClientExample/Program.cs`
+- [X] T036 [P] Document all six methods, full versus partial position close, pending-order cancellation, final-state modification, hedging constraints, call versus execution status, batch inspection/non-atomic behavior, and no-retry warnings in `mt5_grpc_client_csharp/README.md`
+- [X] T037 [P] Add independently runnable market/pending open, full/partial position close, pending-order cancellation, position/pending modification, single close-by, and batch result-inspection examples in `mt5_grpc_client_csharp/examples/NetStandardClientExample/Program.cs`
+- [X] T038 [P] Add supported-surface examples for the six lifecycle methods in `mt5_grpc_client_csharp/examples/NetFramework48ClientExample/Program.cs`
 - [X] T039 [P] Extend net48 compile/reference assertions for every new method, DTO, result, enum, and optional deadline/token signature in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.CompatibilityTests/NetFramework48ReferenceTests.cs`
-- [X] T040 [P] Add documentation contract checks for all five examples, execution-status inspection, hedging/non-atomic guidance, and uncertain-outcome no-retry warnings in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/DocumentationAccuracyTests.cs`
+- [X] T040 [P] Add documentation contract checks for all six method examples, execution-status inspection, hedging/non-atomic guidance, and uncertain-outcome no-retry warnings in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/DocumentationAccuracyTests.cs`
 - [X] T041 [P] Add tests that lifecycle and batch logs contain operation/item/status identity but omit credentials, comment text, and complete trade payloads in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/Mt5GrpcLoggingTests.cs`
 - [X] T042 [P] Bump the additive client version to 4.3.0 and update package release notes while preserving target frameworks, dependency groups, `ProtoContractIdentity`, and `TestedServerVersionRange` in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj`
 - [X] T043 [P] Add the 4.3.0 trade-lifecycle feature, compatibility statement, and no-proto/no-server impact to `mt5_grpc_client_csharp/CHANGELOG.md`
@@ -149,6 +149,22 @@
 - [X] T048 Run `mt5_grpc_client_csharp/scripts/verify-consumer-restore.ps1` with `-Configuration Release -ModernTfm net9.0` and verify clean modern and net48 consumers compile without protobuf generation
 - [X] T049 Pack `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Client.csproj` in Release with `ContinuousIntegrationBuild=true` and inspect the local `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/bin/Release/MetaTrader.Grpc.Client.4.3.0.nupkg` without publishing
 - [X] T050 Execute every command and expected check in `specs/006-trade-lifecycle-operations/quickstart.md`, then review the final diff to confirm `protos/trade.proto`, `protos/position.proto`, generated bindings, Python packages, and server code are unchanged
+
+---
+
+## Phase 8: Ticket-Only Close API Revision
+
+**Purpose**: Supersede the original snapshot-based close contract with a
+ticket-driven position close and add first-class pending-order cancellation.
+
+- [X] T051 Add failing scalar-signature contract tests for ticket/optional-volume `ClosePositionAsync` and ticket-only `CloseOrderAsync` in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.ContractTests/TradeLifecycleSurfaceTests.cs`
+- [X] T052 Add failing validation, lookup, mapping, deadline/token, REMOVE, zero-call, and no-retry tests in `mt5_grpc_client_csharp/tests/MetaTrader.Grpc.Client.Tests/TradeLifecycleMappingTests.cs`
+- [X] T053 Replace `ClosePositionRequest`/`PositionSide` with a scalar close surface and implement position plus symbol-info derivation under one effective deadline in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/`
+- [X] T054 Implement `CloseOrderAsync` with positive-ticket validation and one REMOVE send without lookup or retry in `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/`
+- [X] T055 Update feature specification, design, contract, data model, research, quickstart, README, changelog, and package release notes for the revised RPC behavior
+- [X] T056 Update both examples plus public/compatibility/documentation tests for the six-method lifecycle surface
+- [X] T057 Run focused unit, contract, compatibility, and example verification in Release mode
+- [X] T058 Run the full Release solution tests and generated/package/consumer guards, then confirm no proto/generated/server changes
 
 ---
 

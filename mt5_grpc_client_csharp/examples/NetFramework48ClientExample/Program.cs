@@ -133,12 +133,10 @@ internal static class Program
         });
         PrintTradeOutcome("pending open", pending);
 
-        var fullClose = await client.ClosePositionAsync(new ClosePositionRequest(
-            buyTicket, symbol, PositionSide.Buy, 0.01));
+        var fullClose = await client.ClosePositionAsync(buyTicket);
         PrintTradeOutcome("full close", fullClose);
 
-        var partialClose = await client.ClosePositionAsync(new ClosePositionRequest(
-            sellTicket, symbol, PositionSide.Sell, 0.02) { Volume = 0.01 });
+        var partialClose = await client.ClosePositionAsync(sellTicket, 0.01);
         PrintTradeOutcome("partial close", partialClose);
 
         var positionModify = await client.ModifyTradeAsync(new ModifyTradeRequest(
@@ -149,6 +147,9 @@ internal static class Program
             new PendingOrderModification(
                 pendingTicket, 1.01, 0, 0.95, 1.05, ENUM_ORDER_TYPE_TIME.OrderTimeGtc)));
         PrintTradeOutcome("pending modify", pendingModify);
+
+        var closeOrder = await client.CloseOrderAsync(pendingTicket);
+        PrintTradeOutcome("pending order close", closeOrder);
 
         var closeBy = await client.ClosePositionByAsync(new CloseByRequest(buyTicket, sellTicket));
         PrintTradeOutcome("single close-by", closeBy);

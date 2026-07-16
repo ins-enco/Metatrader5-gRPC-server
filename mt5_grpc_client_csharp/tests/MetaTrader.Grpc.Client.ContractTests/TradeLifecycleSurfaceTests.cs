@@ -12,17 +12,15 @@ namespace MetaTrader.Grpc.Client.ContractTests
 {
     public sealed class TradeLifecycleSurfaceTests
     {
-        [Theory]
-        [InlineData("OpenOrderAsync", typeof(OpenOrderRequest))]
-        [InlineData("ClosePositionAsync", typeof(ClosePositionRequest))]
-        public void Open_and_close_methods_have_the_supported_async_signature(string name, Type requestType)
+        [Fact]
+        public void Open_method_has_the_supported_async_signature()
         {
-            var method = typeof(Mt5GrpcClient).GetMethod(name, BindingFlags.Public | BindingFlags.Instance);
+            var method = typeof(Mt5GrpcClient).GetMethod("OpenOrderAsync", BindingFlags.Public | BindingFlags.Instance);
 
             Assert.NotNull(method);
             Assert.Equal(typeof(Task<TradeOperationResult>), method!.ReturnType);
             var parameters = method.GetParameters();
-            Assert.Equal(new[] { requestType, typeof(DateTime?), typeof(CancellationToken) }, parameters.Select(p => p.ParameterType));
+            Assert.Equal(new[] { typeof(OpenOrderRequest), typeof(DateTime?), typeof(CancellationToken) }, parameters.Select(p => p.ParameterType));
             Assert.False(parameters[0].IsOptional);
             Assert.True(parameters[1].IsOptional);
             Assert.Null(parameters[1].DefaultValue);
@@ -30,13 +28,49 @@ namespace MetaTrader.Grpc.Client.ContractTests
         }
 
         [Fact]
-        public void Open_and_close_requests_require_intent_fields_and_omit_raw_action()
+        public void Close_methods_require_only_the_target_ticket_and_optional_volume()
+        {
+            var closePosition = typeof(Mt5GrpcClient).GetMethod(
+                "ClosePositionAsync",
+                BindingFlags.Public | BindingFlags.Instance);
+            var closeOrder = typeof(Mt5GrpcClient).GetMethod(
+                "CloseOrderAsync",
+                BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.NotNull(closePosition);
+            Assert.Equal(typeof(Task<TradeOperationResult>), closePosition!.ReturnType);
+            var positionParameters = closePosition.GetParameters();
+            Assert.Equal(
+                new[] { typeof(long), typeof(double?), typeof(DateTime?), typeof(CancellationToken) },
+                positionParameters.Select(parameter => parameter.ParameterType));
+            Assert.False(positionParameters[0].IsOptional);
+            Assert.True(positionParameters[1].IsOptional);
+            Assert.Null(positionParameters[1].DefaultValue);
+            Assert.True(positionParameters[2].IsOptional);
+            Assert.Null(positionParameters[2].DefaultValue);
+            Assert.True(positionParameters[3].IsOptional);
+
+            Assert.NotNull(closeOrder);
+            Assert.Equal(typeof(Task<TradeOperationResult>), closeOrder!.ReturnType);
+            var orderParameters = closeOrder.GetParameters();
+            Assert.Equal(
+                new[] { typeof(long), typeof(DateTime?), typeof(CancellationToken) },
+                orderParameters.Select(parameter => parameter.ParameterType));
+            Assert.False(orderParameters[0].IsOptional);
+            Assert.True(orderParameters[1].IsOptional);
+            Assert.Null(orderParameters[1].DefaultValue);
+            Assert.True(orderParameters[2].IsOptional);
+
+            Assert.Contains(TradeLifecycleOperation.CloseOrder, Enum.GetValues(typeof(TradeLifecycleOperation)).Cast<TradeLifecycleOperation>());
+        }
+
+        [Fact]
+        public void Open_request_requires_intent_fields_and_omits_raw_action()
         {
             Assert.NotNull(typeof(OpenOrderRequest).GetConstructor(new[] { typeof(string), typeof(ENUM_ORDER_TYPE), typeof(double) }));
-            Assert.NotNull(typeof(ClosePositionRequest).GetConstructor(new[] { typeof(long), typeof(string), typeof(PositionSide), typeof(double) }));
             Assert.Null(typeof(OpenOrderRequest).GetProperty("Action"));
-            Assert.Null(typeof(ClosePositionRequest).GetProperty("Action"));
-            Assert.Equal(new[] { PositionSide.Buy, PositionSide.Sell }, Enum.GetValues(typeof(PositionSide)).Cast<PositionSide>());
+            Assert.Null(typeof(Mt5GrpcClient).Assembly.GetType("MetaTrader.Grpc.Client.ClosePositionRequest"));
+            Assert.Null(typeof(Mt5GrpcClient).Assembly.GetType("MetaTrader.Grpc.Client.PositionSide"));
         }
 
         [Fact]

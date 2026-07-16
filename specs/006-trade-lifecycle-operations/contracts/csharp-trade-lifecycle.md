@@ -17,7 +17,13 @@ Task<TradeOperationResult> OpenOrderAsync(
     CancellationToken cancellationToken = default);
 
 Task<TradeOperationResult> ClosePositionAsync(
-    ClosePositionRequest request,
+    long positionTicket,
+    double? volume = null,
+    DateTime? deadline = null,
+    CancellationToken cancellationToken = default);
+
+Task<TradeOperationResult> CloseOrderAsync(
+    long orderTicket,
     DateTime? deadline = null,
     CancellationToken cancellationToken = default);
 
@@ -38,8 +44,8 @@ Task<MultipleCloseByResult> ClosePositionsByAsync(
 ```
 
 `SendOrderAsync(OrderSendRequest?, DateTime?, CancellationToken)` remains public
-and source-compatible with its current implementation. It is still the escape
-hatch for remove/cancel and future raw actions.
+and source-compatible with its current implementation. It remains the escape
+hatch for future raw actions not covered by the dedicated methods.
 
 ## Public input contract
 
@@ -49,17 +55,15 @@ must snapshot/copy them at entry and must not mutate them.
 
 - `OpenOrderRequest`: symbol, generated order type, volume, optional price,
   stop-limit, SL/TP, deviation, filling/time policy, expiration, magic, comment.
-- `ClosePositionRequest`: position ticket, symbol, `PositionSide`, current volume,
-  optional partial volume, optional price, deviation, filling, magic, comment.
+- `ClosePositionAsync`: positive position ticket and optional positive finite
+  volume. Null volume means the retrieved full current position volume.
+- `CloseOrderAsync`: positive pending-order ticket only.
 - `ModifyTradeRequest`: exactly one `PositionModification` or
   `PendingOrderModification` final-state target.
 - `CloseByRequest`: primary position ticket, opposite ticket, optional magic and
   comment.
 - `ClosePositionsByRequest`: required symbol, optional magic filter, optional
   comment for generated pair requests.
-
-`PositionSide` has only `Buy` and `Sell`; it is separate from the generated order
-enum so the close mapper must explicitly choose the opposite order type.
 
 Position modification final-state contract:
 
@@ -91,7 +95,8 @@ objects are not passed through or mutated.
 |-------------------|----------|-------------------|---------------|
 | Market open | DEAL | none | Symbol/type/volume and all applicable caller values. |
 | Pending open | PENDING | none | Symbol/pending type/volume plus price/stop-limit/time/expiration/protection. |
-| Position close | DEAL | `position` | Opposite BUY/SELL type; null requested volume uses current volume. |
+| Position close | DEAL | `position` | Symbol/side/current volume/magic come from position lookup; execution mode/fill/price come from symbol info; null requested volume uses current volume. |
+| Pending-order close | REMOVE | `order` only | No position, symbol, or order lookup and no unrelated trade fields. |
 | Position modify | SLTP | `position` only | Final SL and TP; no order id. |
 | Pending modify | MODIFY | `order` only | Final price/stop-limit/SL/TP/time/expiration. |
 | Close by | CLOSE_BY | `position`, `position_by` | Ticket roles preserved exactly; no swap. |
@@ -100,8 +105,24 @@ Single-operation call budget:
 
 - zero RPCs on local validation failure;
 - exactly one `SendOrder` RPC on valid input;
-- zero implicit position/order lookups;
+- position close performs exactly one ticket-filtered `GetPositions`, one
+  `GetSymbolInfo`, and then at most one `SendOrder`;
+- pending-order close performs no lookup and exactly one `SendOrder`;
+- other single operations perform zero implicit position/order lookups;
 - zero implicit retries, regardless of transport or execution outcome.
+
+Position-close derivation is fixed:
+
+1. Query `GetPositions` with only `ticket` and require exactly one matching open
+   position with nonblank symbol, BUY/SELL side, and positive finite volume.
+2. Reject an explicit volume greater than the retrieved current volume.
+3. Query `GetSymbolInfo` for the retrieved symbol.
+4. Use RETURN for request, instant, and exchange execution. For market execution,
+   prefer FOK when allowed, otherwise IOC; fail if neither is allowed.
+5. For request, instant, and exchange execution, use bid when closing BUY (SELL
+   deal) and ask when closing SELL (BUY deal). Market execution omits price.
+6. Map the position magic, capture one effective absolute deadline, and forward
+   that deadline and the same cancellation token to both lookups and the send.
 
 MT5 remains authoritative for live position/order existence, available volume,
 account mode, symbol/direction compatibility, permissions, price/fill rules,
@@ -111,10 +132,10 @@ market state, and broker limits.
 
 Local validation rejects at least:
 
-- null request, blank required symbol, non-positive ticket, or identical close-by
-  tickets;
+- null DTO request where applicable, blank required symbol, non-positive ticket,
+  or identical close-by tickets;
 - NaN/infinite numeric fields and non-positive volume;
-- partial close volume greater than the caller's current-volume snapshot;
+- partial close volume greater than the retrieved current-position volume;
 - CLOSE_BY order type in open, or a market/pending type outside its derived
   category;
 - missing required stop-limit/expiration for a structurally applicable variant,
@@ -125,6 +146,8 @@ Validation is returned as a failed `Mt5GrpcResult<OrderSendResponse>` inside
 `TradeOperationResult`, with operation name and actionable message, null
 execution status, and no RPC. Batch validation uses
 `MultipleCloseByStatus.ValidationFailed` plus `BatchError` and no discovery/send.
+Position/symbol lookup transport or shared-MT5 failures are preserved in the
+same failed call-result surface and cause no send.
 
 ## Single-result contract
 
@@ -222,12 +245,16 @@ batch calls, item index and terminal category. Do not log authentication headers
 account credentials, or complete trade requests/responses. Avoid logging comment
 text and full symbol/account payloads by default.
 
+Position close logs under `TradeLifecycle.Close`; pending-order cancellation
+logs under `TradeLifecycle.CloseOrder`.
+
 ## Compatibility guarantees
 
 - No `.proto`, RPC, message, field number, generated binding, server behavior, or
   Python package change.
-- Existing `SendOrderAsync` behavior and all existing public members remain
-  unchanged.
+- Existing generic wrapper behavior remains unchanged. The unreleased lifecycle
+  surface replaces the snapshot-based close signature with the ticket-based
+  signature above and adds `CloseOrderAsync`.
 - New types compile for both package targets (`netstandard2.0`, `net472`) and are
   consumable from a `net48` example/application.
 - Existing proto contract identity and tested server range stay unchanged.

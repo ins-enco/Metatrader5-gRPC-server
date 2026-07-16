@@ -13,13 +13,16 @@ delegates and require no live MT5 terminal or broker account.
 
 ## 1. Confirm the unchanged canonical contracts
 
-Do not edit `protos/trade.proto` or `protos/position.proto`. The implementation
+Do not edit `protos/trade.proto`, `protos/position.proto`, or
+`protos/symbol_info.proto`. The implementation
 reuses:
 
 - `OrderSendService.SendOrder`, `OrderSendRequest`, `OrderSendResponse`,
   `TradeRequest`, and `TradeResult`;
 - `PositionsService.GetPositions`, `PositionsGetRequest`,
-  `PositionsGetResponse`, and `Position`.
+  `PositionsGetResponse`, and `Position`;
+- `SymbolInfoService.GetSymbolInfo`, `SymbolInfoRequest`, `SymbolInfoResponse`,
+  and `SymbolInfo`.
 
 Restore once, then run the existing generated-binding/build guard:
 
@@ -35,12 +38,12 @@ generation or server change is required.
 
 Add to `mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/`:
 
-- `Mt5GrpcClient.TradeLifecycle.cs` with the five methods from the contract;
+- `Mt5GrpcClient.TradeLifecycle.cs` with the six methods from the contract;
 - `TradeLifecycleRequests.cs` with operation-specific DTOs;
 - `TradeLifecycleResults.cs` with call/execution/batch result types;
 - `TradeExecutionClassifier.cs` with the explicit raw-code table;
 - `TradeLifecycleExecutor.cs` with pure validation/mapping and the sequential
-  batch state machine.
+  batch state machine, plus ticket-driven position/symbol lookups.
 
 Extend existing client internals only as needed to:
 
@@ -57,10 +60,11 @@ Update `mt5_grpc_client_csharp/README.md` and the example projects with independ
 runnable snippets for:
 
 1. market and pending open through `OpenOrderAsync`;
-2. full (`Volume = null`) and partial close;
-3. final-state position and pending-order modification;
-4. single hedging-only close-by;
-5. scoped multiple close-by with per-pair call/execution inspection.
+2. full (volume omitted) and partial position close using only a ticket;
+3. pending-order cancellation using only a ticket;
+4. final-state position and pending-order modification;
+5. single hedging-only close-by;
+6. scoped multiple close-by with per-pair call/execution inspection.
 
 Every example must inspect `CallResult` first and then `ExecutionStatus`/raw
 retcode. Warn that transport uncertainty must not be retried automatically and
@@ -77,12 +81,13 @@ dotnet build mt5_grpc_client_csharp/examples/NetFramework48ClientExample/NetFram
 
 Add pure/scripted xUnit tests covering:
 
-- every action and field mapping: market/pending open, full/partial close,
-  position/pending modify, and unswapped close-by;
+- every action and field mapping: market/pending open, ticket-driven full/partial
+  close, pending-order REMOVE, position/pending modify, and unswapped close-by;
 - local invalid inputs and zero send/discovery calls;
 - full raw result retention and DONE/DONE_PARTIAL/PLACED/LOCKED/rejected/future
   unknown classification;
-- one send and no lookup/retry for each valid single operation;
+- one position lookup plus one symbol-info lookup and at most one send for a
+  position close; one send and no lookup for pending-order close; no retries;
 - symbol/magic discovery, membership freeze, FIFO plus ticket tie-breaker, BUY as
   primary role, and new-position exclusion;
 - rejected pair continuation, uncertain pair withholding/no retry, partial close
@@ -139,7 +144,7 @@ dotnet pack mt5_grpc_client_csharp/src/MetaTrader.Grpc.Client/MetaTrader.Grpc.Cl
 
 | Requirement / criterion | Verification |
 |-------------------------|--------------|
-| Five intent methods, no caller action | Public surface contract/reflection tests and examples |
+| Six intent methods, no caller action | Public surface contract/reflection tests and examples |
 | Correct action/identifier/value mapping | Pure request-builder tests |
 | Invalid input makes zero calls | Scripted delegate call counters |
 | Single operation exactly once, no retry/lookup | Scripted send/position counters |

@@ -15,11 +15,24 @@ namespace MetaTrader.Grpc.Client
         }
 
         public Task<TradeOperationResult> ClosePositionAsync(
-            ClosePositionRequest request,
+            long positionTicket,
+            double? volume = null,
             DateTime? deadline = null,
             CancellationToken cancellationToken = default)
         {
-            return tradeLifecycleExecutor.ClosePositionAsync(request, deadline, cancellationToken);
+            return tradeLifecycleExecutor.ClosePositionAsync(
+                positionTicket,
+                volume,
+                deadline,
+                cancellationToken);
+        }
+
+        public Task<TradeOperationResult> CloseOrderAsync(
+            long orderTicket,
+            DateTime? deadline = null,
+            CancellationToken cancellationToken = default)
+        {
+            return tradeLifecycleExecutor.CloseOrderAsync(orderTicket, deadline, cancellationToken);
         }
 
         public Task<TradeOperationResult> ModifyTradeAsync(

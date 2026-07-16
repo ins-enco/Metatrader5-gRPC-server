@@ -16,6 +16,7 @@ namespace MetaTrader.Grpc.Client
 
         private readonly Func<OrderSendRequest, DateTime?, CancellationToken, Task<Mt5GrpcResult<OrderSendResponse>>> sendOrder;
         private readonly Func<PositionsGetRequest, DateTime?, CancellationToken, Task<Mt5GrpcResult<PositionsGetResponse>>> getPositions;
+        private readonly Func<SymbolInfoRequest, DateTime?, CancellationToken, Task<Mt5GrpcResult<SymbolInfoResponse>>> getSymbolInfo;
         private readonly TimeSpan? defaultDeadline;
         private readonly ILogger? logger;
         private readonly Func<DateTime> utcNow;
@@ -23,12 +24,14 @@ namespace MetaTrader.Grpc.Client
         public TradeLifecycleExecutor(
             Func<OrderSendRequest, DateTime?, CancellationToken, Task<Mt5GrpcResult<OrderSendResponse>>> sendOrder,
             Func<PositionsGetRequest, DateTime?, CancellationToken, Task<Mt5GrpcResult<PositionsGetResponse>>> getPositions,
+            Func<SymbolInfoRequest, DateTime?, CancellationToken, Task<Mt5GrpcResult<SymbolInfoResponse>>> getSymbolInfo,
             TimeSpan? defaultDeadline = null,
             ILogger? logger = null,
             Func<DateTime>? utcNow = null)
         {
             this.sendOrder = sendOrder ?? throw new ArgumentNullException(nameof(sendOrder));
             this.getPositions = getPositions ?? throw new ArgumentNullException(nameof(getPositions));
+            this.getSymbolInfo = getSymbolInfo ?? throw new ArgumentNullException(nameof(getSymbolInfo));
             this.defaultDeadline = defaultDeadline;
             this.logger = logger;
             this.utcNow = utcNow ?? (() => DateTime.UtcNow);
@@ -151,105 +154,164 @@ namespace MetaTrader.Grpc.Client
                 cancellationToken);
         }
 
-        internal Task<TradeOperationResult> ClosePositionAsync(
-            ClosePositionRequest? request,
+        internal async Task<TradeOperationResult> ClosePositionAsync(
+            long positionTicket,
+            double? requestedVolume,
             DateTime? deadline,
             CancellationToken cancellationToken)
         {
-            if (request == null)
-            {
-                return Task.FromResult(ValidationFailure(
-                    TradeLifecycleOperation.Close,
-                    "A close-position request is required."));
-            }
-
-            var positionTicket = request.PositionTicket;
-            var symbol = request.Symbol;
-            var side = request.Side;
-            var currentVolume = request.CurrentVolume;
-            var requestedVolume = request.Volume;
-            var price = request.Price;
-            var deviation = request.Deviation;
-            var fillingPolicy = request.FillingPolicy;
-            var magic = request.Magic;
-            var comment = request.Comment;
-
             if (positionTicket <= 0)
             {
-                return Task.FromResult(ValidationFailure(
+                return ValidationFailure(
                     TradeLifecycleOperation.Close,
-                    "Position ticket must be greater than zero."));
+                    "Position ticket must be greater than zero.");
             }
 
-            if (string.IsNullOrWhiteSpace(symbol))
+            if (requestedVolume.HasValue &&
+                (!IsFinite(requestedVolume.Value) || requestedVolume.Value <= 0))
             {
-                return Task.FromResult(ValidationFailure(
+                return ValidationFailure(
                     TradeLifecycleOperation.Close,
-                    "Close-position symbol must not be blank."));
+                    "Close volume must be positive and finite when supplied.");
             }
 
-            if (side != PositionSide.Buy && side != PositionSide.Sell)
+            var effectiveDeadline = CaptureEffectiveDeadline(deadline);
+            var positionLookup = await getPositions(
+                new PositionsGetRequest { Ticket = positionTicket },
+                effectiveDeadline,
+                cancellationToken).ConfigureAwait(false);
+            if (!positionLookup.IsSuccess)
             {
-                return Task.FromResult(ValidationFailure(
-                    TradeLifecycleOperation.Close,
-                    "Position side must be Buy or Sell."));
+                return CallFailure(TradeLifecycleOperation.Close, positionLookup.Error!);
             }
 
-            if (!IsFinite(currentVolume) || currentVolume <= 0)
+            var matchingPositions = positionLookup.Value!.Positions
+                .Where(position => position != null && position.Ticket == positionTicket)
+                .ToList();
+            if (matchingPositions.Count == 0)
             {
-                return Task.FromResult(ValidationFailure(
+                return ValidationFailure(
                     TradeLifecycleOperation.Close,
-                    "Current position volume must be positive and finite."));
+                    "The requested open position was not found.");
             }
 
-            var volume = requestedVolume ?? currentVolume;
-            if (!IsFinite(volume) || volume <= 0 || volume > currentVolume)
+            if (matchingPositions.Count != 1)
             {
-                return Task.FromResult(ValidationFailure(
+                return ValidationFailure(
                     TradeLifecycleOperation.Close,
-                    "Close volume must be positive, finite, and no greater than current volume."));
+                    "The position lookup returned multiple records for the requested ticket.");
             }
 
-            if (!IsFinite(price))
+            var position = matchingPositions[0];
+            if (string.IsNullOrWhiteSpace(position.Symbol))
             {
-                return Task.FromResult(ValidationFailure(
+                return ValidationFailure(
                     TradeLifecycleOperation.Close,
-                    "Close execution price must be finite when supplied."));
+                    "The position lookup returned a blank symbol.");
             }
 
-            if (!IsFillingPolicy(fillingPolicy))
+            if (position.Type != 0 && position.Type != 1)
             {
-                return Task.FromResult(ValidationFailure(
+                return ValidationFailure(
                     TradeLifecycleOperation.Close,
-                    "Close filling policy is not supported by the current contract."));
+                    "The position lookup returned an unsupported position side.");
+            }
+
+            if (!IsFinite(position.Volume) || position.Volume <= 0)
+            {
+                return ValidationFailure(
+                    TradeLifecycleOperation.Close,
+                    "The position lookup returned a non-positive or non-finite current volume.");
+            }
+
+            var volume = requestedVolume ?? position.Volume;
+            if (volume > position.Volume)
+            {
+                return ValidationFailure(
+                    TradeLifecycleOperation.Close,
+                    "Close volume must be no greater than the current position volume.");
+            }
+
+            var symbolLookup = await getSymbolInfo(
+                new SymbolInfoRequest { Symbol = position.Symbol },
+                effectiveDeadline,
+                cancellationToken).ConfigureAwait(false);
+            if (!symbolLookup.IsSuccess)
+            {
+                return CallFailure(TradeLifecycleOperation.Close, symbolLookup.Error!);
+            }
+
+            var symbolInfo = symbolLookup.Value!.SymbolInfo;
+            if (symbolInfo == null)
+            {
+                return ValidationFailure(
+                    TradeLifecycleOperation.Close,
+                    "The symbol lookup returned no symbol information.");
+            }
+
+            var fillingPolicy = ResolveCloseFillingPolicy(symbolInfo);
+            if (!fillingPolicy.HasValue)
+            {
+                return ValidationFailure(
+                    TradeLifecycleOperation.Close,
+                    "The symbol does not expose a supported fill policy for closing the position.");
+            }
+
+            double? price = null;
+            if (symbolInfo.TradeExemode != 2)
+            {
+                price = position.Type == 0 ? symbolInfo.Bid : symbolInfo.Ask;
+                if (!IsFinite(price.Value) || price.Value <= 0)
+                {
+                    return ValidationFailure(
+                        TradeLifecycleOperation.Close,
+                        "The symbol lookup returned no usable close price for its execution mode.");
+                }
             }
 
             var tradeRequest = new TradeRequest
             {
                 Action = ENUM_TRADE_REQUEST_ACTIONS.TradeActionDeal,
                 Position = positionTicket,
-                Symbol = symbol,
-                Type = side == PositionSide.Buy
+                Symbol = position.Symbol,
+                Type = position.Type == 0
                     ? ENUM_ORDER_TYPE.OrderTypeSell
                     : ENUM_ORDER_TYPE.OrderTypeBuy,
                 Volume = volume,
-                Deviation = deviation,
-                TypeFilling = fillingPolicy,
-                Magic = magic
+                TypeFilling = fillingPolicy.Value,
+                Magic = position.Magic
             };
             if (price.HasValue)
             {
                 tradeRequest.Price = price.Value;
             }
 
-            if (comment != null)
+            return await SendAsync(
+                TradeLifecycleOperation.Close,
+                tradeRequest,
+                effectiveDeadline,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        internal Task<TradeOperationResult> CloseOrderAsync(
+            long orderTicket,
+            DateTime? deadline,
+            CancellationToken cancellationToken)
+        {
+            if (orderTicket <= 0)
             {
-                tradeRequest.Comment = comment;
+                return Task.FromResult(ValidationFailure(
+                    TradeLifecycleOperation.CloseOrder,
+                    "Pending-order ticket must be greater than zero."));
             }
 
             return SendAsync(
-                TradeLifecycleOperation.Close,
-                tradeRequest,
+                TradeLifecycleOperation.CloseOrder,
+                new TradeRequest
+                {
+                    Action = ENUM_TRADE_REQUEST_ACTIONS.TradeActionRemove,
+                    Order = orderTicket
+                },
                 deadline,
                 cancellationToken);
         }
@@ -631,6 +693,23 @@ namespace MetaTrader.Grpc.Client
             return result;
         }
 
+        internal TradeOperationResult CallFailure(
+            TradeLifecycleOperation operation,
+            Mt5GrpcError error)
+        {
+            if (error == null)
+            {
+                throw new ArgumentNullException(nameof(error));
+            }
+
+            var result = new TradeOperationResult(
+                operation,
+                Mt5GrpcResult<OrderSendResponse>.Failure(error),
+                executionStatus: null);
+            Log(result);
+            return result;
+        }
+
         internal MultipleCloseByResult BatchValidationFailure(string message)
         {
             return new MultipleCloseByResult(
@@ -712,6 +791,31 @@ namespace MetaTrader.Grpc.Client
             return value == ENUM_ORDER_TYPE_FILLING.OrderFillingFok ||
                    value == ENUM_ORDER_TYPE_FILLING.OrderFillingIoc ||
                    value == ENUM_ORDER_TYPE_FILLING.OrderFillingReturn;
+        }
+
+        private static ENUM_ORDER_TYPE_FILLING? ResolveCloseFillingPolicy(SymbolInfo symbolInfo)
+        {
+            switch (symbolInfo.TradeExemode)
+            {
+                case 0: // SYMBOL_TRADE_EXECUTION_REQUEST
+                case 1: // SYMBOL_TRADE_EXECUTION_INSTANT
+                case 3: // SYMBOL_TRADE_EXECUTION_EXCHANGE
+                    return ENUM_ORDER_TYPE_FILLING.OrderFillingReturn;
+                case 2: // SYMBOL_TRADE_EXECUTION_MARKET
+                    if ((symbolInfo.FillingMode & 1) != 0) // SYMBOL_FILLING_FOK
+                    {
+                        return ENUM_ORDER_TYPE_FILLING.OrderFillingFok;
+                    }
+
+                    if ((symbolInfo.FillingMode & 2) != 0) // SYMBOL_FILLING_IOC
+                    {
+                        return ENUM_ORDER_TYPE_FILLING.OrderFillingIoc;
+                    }
+
+                    return null;
+                default:
+                    return null;
+            }
         }
 
         private static string? ValidateTimePolicy(ENUM_ORDER_TYPE_TIME timePolicy, Timestamp? expiration)

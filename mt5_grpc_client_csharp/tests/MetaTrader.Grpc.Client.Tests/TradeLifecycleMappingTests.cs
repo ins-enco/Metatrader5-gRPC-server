@@ -108,61 +108,274 @@ namespace MetaTrader.Grpc.Client.Tests
         }
 
         [Fact]
-        public async Task Full_close_maps_snapshot_volume_and_opposite_side_without_lookup()
+        public async Task Full_close_looks_up_position_and_symbol_then_maps_derived_values()
         {
-            var harness = new ExecutorHarness();
-            var request = new ClosePositionRequest(101, "GBPUSD", PositionSide.Buy, 1.25)
+            var harness = new ExecutorHarness
             {
-                Price = 1.27,
-                Deviation = 3,
-                FillingPolicy = ENUM_ORDER_TYPE_FILLING.OrderFillingFok,
-                Magic = 8,
-                Comment = "full-close"
+                PositionResult = PositionLookupSuccess(new Position
+                {
+                    Ticket = 101,
+                    Symbol = "GBPUSD",
+                    Type = 0,
+                    Volume = 1.25,
+                    PriceCurrent = 1.27,
+                    Magic = 8
+                }),
+                SymbolInfoResult = SymbolInfoLookupSuccess(
+                    tradeExecutionMode: 2,
+                    fillingMode: 1)
             };
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            using var cancellation = new CancellationTokenSource();
 
-            var result = await harness.Executor.ClosePositionAsync(request, null, CancellationToken.None);
+            var result = await harness.Executor.ClosePositionAsync(101, null, deadline, cancellation.Token);
 
             Assert.Equal(TradeLifecycleOperation.Close, result.Operation);
             Assert.Equal(1, harness.SendCalls);
-            Assert.Equal(0, harness.PositionCalls);
+            Assert.Equal(1, harness.PositionCalls);
+            Assert.Equal(1, harness.SymbolInfoCalls);
+            Assert.Equal(101, harness.LastPositionRequest!.Ticket);
+            Assert.Equal("GBPUSD", harness.LastSymbolInfoRequest!.Symbol);
+            Assert.All(harness.Deadlines, value => Assert.Equal(deadline, value));
+            Assert.All(harness.CancellationTokens, value => Assert.Equal(cancellation.Token, value));
             var mapped = harness.LastSendRequest!.TradeRequest;
             Assert.Equal(ENUM_TRADE_REQUEST_ACTIONS.TradeActionDeal, mapped.Action);
             Assert.Equal(101, mapped.Position);
             Assert.Equal("GBPUSD", mapped.Symbol);
             Assert.Equal(ENUM_ORDER_TYPE.OrderTypeSell, mapped.Type);
             Assert.Equal(1.25, mapped.Volume);
-            Assert.Equal(1.27, mapped.Price);
-            Assert.Equal("full-close", mapped.Comment);
+            Assert.False(mapped.HasPrice);
+            Assert.Equal(ENUM_ORDER_TYPE_FILLING.OrderFillingFok, mapped.TypeFilling);
+            Assert.Equal(8, mapped.Magic);
         }
 
         [Fact]
         public async Task Partial_close_maps_requested_volume_and_sell_position_to_buy_order()
         {
-            var harness = new ExecutorHarness();
-            var request = new ClosePositionRequest(202, "USDJPY", PositionSide.Sell, 2.0)
+            var harness = new ExecutorHarness
             {
-                Volume = 0.75
+                PositionResult = PositionLookupSuccess(new Position
+                {
+                    Ticket = 202,
+                    Symbol = "USDJPY",
+                    Type = 1,
+                    Volume = 2.0,
+                    PriceCurrent = 150.0
+                }),
+                SymbolInfoResult = SymbolInfoLookupSuccess(
+                    tradeExecutionMode: 2,
+                    fillingMode: 2)
             };
 
-            await harness.Executor.ClosePositionAsync(request, null, CancellationToken.None);
+            await harness.Executor.ClosePositionAsync(202, 0.75, null, CancellationToken.None);
 
             var mapped = harness.LastSendRequest!.TradeRequest;
             Assert.Equal(ENUM_ORDER_TYPE.OrderTypeBuy, mapped.Type);
             Assert.Equal(0.75, mapped.Volume);
+            Assert.Equal(ENUM_ORDER_TYPE_FILLING.OrderFillingIoc, mapped.TypeFilling);
         }
 
         [Theory]
-        [MemberData(nameof(InvalidCloseRequests))]
-        public async Task Invalid_close_input_makes_zero_calls(ClosePositionRequest? request)
+        [InlineData(0, null)]
+        [InlineData(-1, null)]
+        [InlineData(1, 0.0)]
+        [InlineData(1, -0.1)]
+        [InlineData(1, double.NaN)]
+        [InlineData(1, double.PositiveInfinity)]
+        public async Task Structurally_invalid_close_input_makes_zero_calls(long ticket, double? volume)
         {
             var harness = new ExecutorHarness();
 
-            var result = await harness.Executor.ClosePositionAsync(request, null, CancellationToken.None);
+            var result = await harness.Executor.ClosePositionAsync(ticket, volume, null, CancellationToken.None);
 
             Assert.False(result.CallResult.IsSuccess);
             Assert.Null(result.ExecutionStatus);
             Assert.Equal(0, harness.SendCalls);
             Assert.Equal(0, harness.PositionCalls);
+            Assert.Equal(0, harness.SymbolInfoCalls);
+        }
+
+        [Fact]
+        public async Task Close_volume_above_current_position_volume_stops_after_position_lookup()
+        {
+            var harness = new ExecutorHarness
+            {
+                PositionResult = PositionLookupSuccess(new Position
+                {
+                    Ticket = 303,
+                    Symbol = "EURUSD",
+                    Type = 0,
+                    Volume = 1.0
+                })
+            };
+
+            var result = await harness.Executor.ClosePositionAsync(303, 1.01, null, CancellationToken.None);
+
+            Assert.False(result.CallResult.IsSuccess);
+            Assert.Contains("no greater", result.CallResult.Error!.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(1, harness.PositionCalls);
+            Assert.Equal(0, harness.SymbolInfoCalls);
+            Assert.Equal(0, harness.SendCalls);
+        }
+
+        [Fact]
+        public async Task Missing_position_stops_without_symbol_lookup_or_send()
+        {
+            var harness = new ExecutorHarness();
+
+            var result = await harness.Executor.ClosePositionAsync(404, null, null, CancellationToken.None);
+
+            Assert.False(result.CallResult.IsSuccess);
+            Assert.Contains("not found", result.CallResult.Error!.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(1, harness.PositionCalls);
+            Assert.Equal(0, harness.SymbolInfoCalls);
+            Assert.Equal(0, harness.SendCalls);
+        }
+
+        [Fact]
+        public async Task Position_lookup_failure_is_preserved_without_send()
+        {
+            var lookupError = new Mt5GrpcError
+            {
+                Operation = "PositionsService.GetPositions",
+                StatusCode = StatusCode.Unavailable,
+                Message = "position lookup failed"
+            };
+            var harness = new ExecutorHarness
+            {
+                PositionResult = Mt5GrpcResult<PositionsGetResponse>.Failure(lookupError)
+            };
+
+            var result = await harness.Executor.ClosePositionAsync(505, null, null, CancellationToken.None);
+
+            Assert.False(result.CallResult.IsSuccess);
+            Assert.Same(lookupError, result.CallResult.Error);
+            Assert.Equal(1, harness.PositionCalls);
+            Assert.Equal(0, harness.SymbolInfoCalls);
+            Assert.Equal(0, harness.SendCalls);
+        }
+
+        [Fact]
+        public async Task Symbol_lookup_failure_is_preserved_without_send()
+        {
+            var lookupError = new Mt5GrpcError
+            {
+                Operation = "SymbolInfoService.GetSymbolInfo",
+                StatusCode = StatusCode.Unavailable,
+                Message = "symbol lookup failed"
+            };
+            var harness = new ExecutorHarness
+            {
+                PositionResult = PositionLookupSuccess(new Position
+                {
+                    Ticket = 606,
+                    Symbol = "EURUSD",
+                    Type = 0,
+                    Volume = 1
+                }),
+                SymbolInfoResult = Mt5GrpcResult<SymbolInfoResponse>.Failure(lookupError)
+            };
+
+            var result = await harness.Executor.ClosePositionAsync(606, null, null, CancellationToken.None);
+
+            Assert.False(result.CallResult.IsSuccess);
+            Assert.Same(lookupError, result.CallResult.Error);
+            Assert.Equal(1, harness.PositionCalls);
+            Assert.Equal(1, harness.SymbolInfoCalls);
+            Assert.Equal(0, harness.SendCalls);
+        }
+
+        [Theory]
+        [InlineData(0, 0, 1.2345, 1.2347, 1.2345)]
+        [InlineData(1, 1, 1.2345, 1.2347, 1.2347)]
+        [InlineData(3, 0, 1.2345, 1.2347, 1.2345)]
+        public async Task Non_market_execution_close_derives_price_and_return_fill(
+            int tradeExecutionMode,
+            int positionType,
+            double bid,
+            double ask,
+            double expectedPrice)
+        {
+            var harness = new ExecutorHarness
+            {
+                PositionResult = PositionLookupSuccess(new Position
+                {
+                    Ticket = 707,
+                    Symbol = "EURUSD",
+                    Type = positionType,
+                    Volume = 0.5
+                }),
+                SymbolInfoResult = SymbolInfoLookupSuccess(
+                    tradeExecutionMode: tradeExecutionMode,
+                    fillingMode: 0,
+                    bid: bid,
+                    ask: ask)
+            };
+
+            await harness.Executor.ClosePositionAsync(707, null, null, CancellationToken.None);
+
+            var mapped = harness.LastSendRequest!.TradeRequest;
+            Assert.Equal(expectedPrice, mapped.Price);
+            Assert.Equal(ENUM_ORDER_TYPE_FILLING.OrderFillingReturn, mapped.TypeFilling);
+        }
+
+        [Fact]
+        public async Task Market_execution_without_supported_active_fill_mode_makes_no_send()
+        {
+            var harness = new ExecutorHarness
+            {
+                PositionResult = PositionLookupSuccess(new Position
+                {
+                    Ticket = 808,
+                    Symbol = "EURUSD",
+                    Type = 0,
+                    Volume = 1
+                }),
+                SymbolInfoResult = SymbolInfoLookupSuccess(
+                    tradeExecutionMode: 2,
+                    fillingMode: 0)
+            };
+
+            var result = await harness.Executor.ClosePositionAsync(808, null, null, CancellationToken.None);
+
+            Assert.False(result.CallResult.IsSuccess);
+            Assert.Contains("fill", result.CallResult.Error!.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(0, harness.SendCalls);
+        }
+
+        [Fact]
+        public async Task Close_order_maps_remove_action_and_sends_once_without_lookup()
+        {
+            var harness = new ExecutorHarness();
+
+            var result = await harness.Executor.CloseOrderAsync(901, null, CancellationToken.None);
+
+            Assert.Equal(TradeLifecycleOperation.CloseOrder, result.Operation);
+            Assert.True(result.CallResult.IsSuccess);
+            Assert.Equal(TradeExecutionStatus.Completed, result.ExecutionStatus);
+            Assert.Equal(1, harness.SendCalls);
+            Assert.Equal(0, harness.PositionCalls);
+            Assert.Equal(0, harness.SymbolInfoCalls);
+            var mapped = harness.LastSendRequest!.TradeRequest;
+            Assert.Equal(ENUM_TRADE_REQUEST_ACTIONS.TradeActionRemove, mapped.Action);
+            Assert.Equal(901, mapped.Order);
+            Assert.False(mapped.HasPosition);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public async Task Invalid_close_order_ticket_makes_zero_calls(long ticket)
+        {
+            var harness = new ExecutorHarness();
+
+            var result = await harness.Executor.CloseOrderAsync(ticket, null, CancellationToken.None);
+
+            Assert.False(result.CallResult.IsSuccess);
+            Assert.Equal(TradeLifecycleOperation.CloseOrder, result.Operation);
+            Assert.Equal(0, harness.SendCalls);
+            Assert.Equal(0, harness.PositionCalls);
+            Assert.Equal(0, harness.SymbolInfoCalls);
         }
 
         [Fact]
@@ -378,19 +591,6 @@ namespace MetaTrader.Grpc.Client.Tests
             };
         }
 
-        public static IEnumerable<object?[]> InvalidCloseRequests()
-        {
-            yield return new object?[] { null };
-            yield return new object?[] { new ClosePositionRequest(0, "EURUSD", PositionSide.Buy, 1) };
-            yield return new object?[] { new ClosePositionRequest(1, " ", PositionSide.Buy, 1) };
-            yield return new object?[] { new ClosePositionRequest(1, "EURUSD", (PositionSide)99, 1) };
-            yield return new object?[] { new ClosePositionRequest(1, "EURUSD", PositionSide.Buy, 0) };
-            yield return new object?[] { new ClosePositionRequest(1, "EURUSD", PositionSide.Buy, double.NaN) };
-            yield return new object?[] { new ClosePositionRequest(1, "EURUSD", PositionSide.Buy, 1) { Volume = 0 } };
-            yield return new object?[] { new ClosePositionRequest(1, "EURUSD", PositionSide.Buy, 1) { Volume = 2 } };
-            yield return new object?[] { new ClosePositionRequest(1, "EURUSD", PositionSide.Buy, 1) { Price = double.NegativeInfinity } };
-        }
-
         public static IEnumerable<object?[]> InvalidModificationRequests()
         {
             yield return new object?[] { null };
@@ -428,24 +628,58 @@ namespace MetaTrader.Grpc.Client.Tests
             };
         }
 
+        private static Mt5GrpcResult<PositionsGetResponse> PositionLookupSuccess(Position position)
+        {
+            var response = new PositionsGetResponse();
+            response.Positions.Add(position);
+            return Mt5GrpcResult<PositionsGetResponse>.Success(response);
+        }
+
+        private static Mt5GrpcResult<SymbolInfoResponse> SymbolInfoLookupSuccess(
+            int tradeExecutionMode,
+            int fillingMode,
+            double bid = 1,
+            double ask = 1)
+        {
+            return Mt5GrpcResult<SymbolInfoResponse>.Success(new SymbolInfoResponse
+            {
+                SymbolInfo = new SymbolInfo
+                {
+                    TradeExemode = tradeExecutionMode,
+                    FillingMode = fillingMode,
+                    Bid = bid,
+                    Ask = ask
+                }
+            });
+        }
+
         private sealed class ExecutorHarness
         {
             public ExecutorHarness()
             {
-                Executor = new TradeLifecycleExecutor(SendAsync, GetPositionsAsync);
+                Executor = new TradeLifecycleExecutor(SendAsync, GetPositionsAsync, GetSymbolInfoAsync);
             }
 
             public TradeLifecycleExecutor Executor { get; }
             public int SendCalls { get; private set; }
             public int PositionCalls { get; private set; }
+            public int SymbolInfoCalls { get; private set; }
             public OrderSendRequest? LastSendRequest { get; private set; }
+            public PositionsGetRequest? LastPositionRequest { get; private set; }
+            public SymbolInfoRequest? LastSymbolInfoRequest { get; private set; }
             public DateTime? LastDeadline { get; private set; }
             public CancellationToken LastCancellationToken { get; private set; }
+            public List<DateTime?> Deadlines { get; } = new List<DateTime?>();
+            public List<CancellationToken> CancellationTokens { get; } = new List<CancellationToken>();
             public Mt5GrpcResult<OrderSendResponse> SendResult { get; set; } =
                 Mt5GrpcResult<OrderSendResponse>.Success(new OrderSendResponse
                 {
                     TradeResult = new TradeResult { Retcode = 10009 }
                 });
+            public Mt5GrpcResult<PositionsGetResponse> PositionResult { get; set; } =
+                Mt5GrpcResult<PositionsGetResponse>.Success(new PositionsGetResponse());
+            public Mt5GrpcResult<SymbolInfoResponse> SymbolInfoResult { get; set; } =
+                SymbolInfoLookupSuccess(tradeExecutionMode: 2, fillingMode: 1);
 
             private Task<Mt5GrpcResult<OrderSendResponse>> SendAsync(
                 OrderSendRequest request,
@@ -456,6 +690,7 @@ namespace MetaTrader.Grpc.Client.Tests
                 LastSendRequest = request;
                 LastDeadline = deadline;
                 LastCancellationToken = cancellationToken;
+                RecordCall(deadline, cancellationToken);
                 return Task.FromResult(SendResult);
             }
 
@@ -465,7 +700,26 @@ namespace MetaTrader.Grpc.Client.Tests
                 CancellationToken cancellationToken)
             {
                 PositionCalls++;
-                return Task.FromResult(Mt5GrpcResult<PositionsGetResponse>.Success(new PositionsGetResponse()));
+                LastPositionRequest = request;
+                RecordCall(deadline, cancellationToken);
+                return Task.FromResult(PositionResult);
+            }
+
+            private Task<Mt5GrpcResult<SymbolInfoResponse>> GetSymbolInfoAsync(
+                SymbolInfoRequest request,
+                DateTime? deadline,
+                CancellationToken cancellationToken)
+            {
+                SymbolInfoCalls++;
+                LastSymbolInfoRequest = request;
+                RecordCall(deadline, cancellationToken);
+                return Task.FromResult(SymbolInfoResult);
+            }
+
+            private void RecordCall(DateTime? deadline, CancellationToken cancellationToken)
+            {
+                Deadlines.Add(deadline);
+                CancellationTokens.Add(cancellationToken);
             }
         }
     }

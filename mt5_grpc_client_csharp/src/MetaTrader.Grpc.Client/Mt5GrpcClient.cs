@@ -49,6 +49,7 @@ namespace MetaTrader.Grpc.Client
             tradeLifecycleExecutor = new TradeLifecycleExecutor(
                 SendOrderAsync,
                 GetPositionsAsync,
+                GetSymbolInfoAsync,
                 options.DefaultDeadline,
                 logger);
         }

@@ -94,11 +94,14 @@ namespace MetaTrader.Grpc.Client.ContractTests
 
             Assert.Contains("OpenOrderAsync", readme);
             Assert.Contains("ClosePositionAsync", readme);
+            Assert.Contains("CloseOrderAsync", readme);
             Assert.Contains("ModifyTradeAsync", readme);
             Assert.Contains("ClosePositionByAsync", readme);
             Assert.Contains("ClosePositionsByAsync", readme);
             Assert.Contains("full close", readme, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("partial close", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("position ticket", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("pending-order ticket", readme, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ExecutionStatus", readme);
             Assert.Contains("hedging account", readme, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("non-atomic", readme, StringComparison.OrdinalIgnoreCase);
@@ -114,6 +117,7 @@ namespace MetaTrader.Grpc.Client.ContractTests
 
             Assert.Contains("OpenOrderAsync", program);
             Assert.Contains("ClosePositionAsync", program);
+            Assert.Contains("CloseOrderAsync", program);
             Assert.Contains("ModifyTradeAsync", program);
             Assert.Contains("ClosePositionByAsync", program);
             Assert.Contains("ClosePositionsByAsync", program);

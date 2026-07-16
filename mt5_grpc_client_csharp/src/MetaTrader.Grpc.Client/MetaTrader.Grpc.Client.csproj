@@ -15,7 +15,7 @@
     <ProtoContractIdentity>protos-005-trade-transaction-events</ProtoContractIdentity>
     <TestedServerVersionRange>[0.3.0,1.0.0)</TestedServerVersionRange>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>4.3.0: adds OpenOrderAsync, ClosePositionAsync, ModifyTradeAsync, ClosePositionByAsync, and deterministic ClosePositionsByAsync lifecycle helpers with separate call/execution status and no implicit retry. This is a C# client-only additive release: SendOrderAsync, proto/generated bindings, server behavior, target frameworks, and dependency groups are unchanged. Proto contract identity: protos-005-trade-transaction-events. Tested server range: [0.3.0,1.0.0).</PackageReleaseNotes>
+    <PackageReleaseNotes>4.3.0: adds OpenOrderAsync, ticket-only ClosePositionAsync, ticket-only CloseOrderAsync for pending-order cancellation, ModifyTradeAsync, ClosePositionByAsync, and deterministic ClosePositionsByAsync lifecycle helpers with separate call/execution status and no implicit retry. Position close derives request fields through one position and one symbol-info lookup; order close maps REMOVE without lookup. This is a C# client-only additive release: SendOrderAsync, proto/generated bindings, server behavior, target frameworks, and dependency groups are unchanged. Proto contract identity: protos-005-trade-transaction-events. Tested server range: [0.3.0,1.0.0).</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>

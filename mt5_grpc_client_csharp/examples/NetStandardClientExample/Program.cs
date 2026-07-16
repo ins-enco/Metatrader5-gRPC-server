@@ -169,23 +169,12 @@ internal static class Program
         const long sellPositionTicket = 1002;
         const long pendingOrderTicket = 2001;
 
-        // 2. Close: Volume omitted means full close using CurrentVolume; setting
-        // Volume requests a partial close. Neither method performs a lookup.
-        var fullClose = await client.ClosePositionAsync(new ClosePositionRequest(
-            buyPositionTicket, symbol, PositionSide.Buy, currentVolume: 0.01)
-        {
-            FillingPolicy = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
-            Comment = "lifecycle-full-close"
-        });
+        // 2. Close: the client looks up the position and symbol settings. Omit
+        // volume for a full close; provide volume for a partial close.
+        var fullClose = await client.ClosePositionAsync(buyPositionTicket);
         PrintTradeOutcome("full close", fullClose);
 
-        var partialClose = await client.ClosePositionAsync(new ClosePositionRequest(
-            sellPositionTicket, symbol, PositionSide.Sell, currentVolume: 0.02)
-        {
-            Volume = 0.01,
-            FillingPolicy = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
-            Comment = "lifecycle-partial-close"
-        });
+        var partialClose = await client.ClosePositionAsync(sellPositionTicket, volume: 0.01);
         PrintTradeOutcome("partial close", partialClose);
 
         // 3. Modify: callers provide the complete desired final state. Zero SL/TP
@@ -207,7 +196,11 @@ internal static class Program
             }));
         PrintTradeOutcome("pending modify", modifyPending);
 
-        // 4. Single close-by is hedging-account-only. Ticket roles are preserved.
+        // 4. Cancel a pending order using only its ticket.
+        var closeOrder = await client.CloseOrderAsync(pendingOrderTicket);
+        PrintTradeOutcome("pending order close", closeOrder);
+
+        // 5. Single close-by is hedging-account-only. Ticket roles are preserved.
         var closeBy = await client.ClosePositionByAsync(new CloseByRequest(
             buyPositionTicket, sellPositionTicket)
         {
@@ -215,7 +208,7 @@ internal static class Program
         });
         PrintTradeOutcome("single close-by", closeBy);
 
-        // 5. Batch close-by is sequential and non-atomic. Inspect every pair;
+        // 6. Batch close-by is sequential and non-atomic. Inspect every pair;
         // earlier successes are not rolled back when a later pair fails.
         var batch = await client.ClosePositionsByAsync(new ClosePositionsByRequest(symbol)
         {

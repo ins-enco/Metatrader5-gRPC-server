@@ -12,7 +12,8 @@ namespace MetaTrader.Grpc.Client
         Close = 1,
         ModifyPosition = 2,
         ModifyPendingOrder = 3,
-        CloseBy = 4
+        CloseBy = 4,
+        CloseOrder = 5
     }
 
     public enum TradeExecutionStatus

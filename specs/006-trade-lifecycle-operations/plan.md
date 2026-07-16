@@ -5,15 +5,20 @@
 
 ## Summary
 
-Add five intent-focused asynchronous operations to `Mt5GrpcClient` for opening,
-closing, modifying, closing by, and automatically processing multiple close-by
-pairs. Each operation builds a fresh existing `TradeRequest`, delegates order
+Add six intent-focused asynchronous operations to `Mt5GrpcClient` for opening,
+closing positions, cancelling pending orders, modifying, closing by, and
+automatically processing multiple close-by pairs. Each operation builds a fresh
+existing `TradeRequest`, delegates order
 submission to the unchanged `SendOrderAsync` path, and returns the existing call
 result together with a conservative execution status derived from the raw MT5
 return code. The batch operation performs one symbol-scoped discovery, freezes
 ticket membership, refreshes only that membership before each deterministic
 oldest-buy/oldest-sell pairing decision, submits pairs sequentially without
 retry, and retains attempted, unattempted, ineligible, and unpaired outcomes.
+Position close accepts only a ticket and optional volume, then performs one
+position lookup and one symbol-info lookup to derive the close request under one
+effective deadline. Pending-order close accepts only its ticket and maps REMOVE
+without a lookup.
 
 This is a C# client-only additive change. `protos/trade.proto`,
 `protos/position.proto`, generated bindings, the Python packages, server RPCs,
@@ -27,9 +32,9 @@ and the existing generic `SendOrderAsync` source behavior remain unchanged.
 **Testing**: xUnit via `dotnet test`; pure request-mapping/validation/classification tests; scripted transport tests for discovery, refresh, pairing, cancellation, and failures; existing contract, compatibility, package, and example checks  
 **Target Platform**: NuGet C# client for .NET implementations compatible with `netstandard2.0`, plus the package's .NET Framework `net472` asset consumed by .NET Framework 4.8 applications  
 **Project Type**: Existing C# client SDK with examples and tests; no server or protocol implementation change  
-**Performance Goals**: Each dedicated single operation performs exactly one `SendOrder` RPC and no lookup/retry; a batch performs one initial `GetPositions`, at most one symbol-scoped refresh per pairing decision, and one `SendOrder` per attempted pair, all sequentially  
-**Constraints**: Preserve raw `TradeResult` fields and existing `Mt5GrpcResult` error semantics; no implicit retry; no caller-object mutation; one shared effective deadline and cancellation token per batch; deterministic FIFO/ticket ordering; no proto or generated-source edits; no account-state validation beyond available snapshots  
-**Scale/Scope**: Five public methods, operation-specific request/result DTOs, one classifier, one internal executor/test seam, one initial position set per batch, and O(N) retained outcomes/remainders for N frozen positions
+**Performance Goals**: Each dedicated single operation performs at most one `SendOrder` RPC and no retry; position close adds exactly one ticket-filtered `GetPositions` plus one `GetSymbolInfo`, while pending-order close adds no lookup; a batch performs one initial `GetPositions`, at most one symbol-scoped refresh per pairing decision, and one `SendOrder` per attempted pair, all sequentially
+**Constraints**: Preserve raw `TradeResult` fields and existing `Mt5GrpcResult` error semantics; no implicit retry; no caller-object or lookup-response mutation; one shared effective deadline and cancellation token per multi-RPC operation; deterministic FIFO/ticket ordering; no proto or generated-source edits; MT5 remains authoritative after lookup snapshots
+**Scale/Scope**: Six public methods, operation-specific request/result DTOs, one classifier, one internal executor/test seam, one initial position set per batch, and O(N) retained outcomes/remainders for N frozen positions
 
 ## Constitution Check
 
@@ -37,15 +42,18 @@ and the existing generic `SendOrderAsync` source behavior remain unchanged.
 
 - **Protocol contract**: PASS. The spec and [research.md](./research.md) identify
   `OrderSendService.SendOrder`, `PositionsService.GetPositions`,
+  `SymbolInfoService.GetSymbolInfo`,
   `OrderSendRequest`, `OrderSendResponse`, `TradeRequest`, `TradeResult`,
-  `PositionsGetRequest`, `PositionsGetResponse`, and `Position`. No `.proto`
+  `PositionsGetRequest`, `PositionsGetResponse`, `Position`, `SymbolInfoRequest`,
+  `SymbolInfoResponse`, and `SymbolInfo`. No `.proto`
   field, number, enum, RPC, generated binding, or server implementation changes;
   compatibility is an additive C# package minor release.
 - **MT5 behavior fidelity**: PASS. [research.md](./research.md) and
   [contracts/csharp-trade-lifecycle.md](./contracts/csharp-trade-lifecycle.md)
   map market open/close to `TRADE_ACTION_DEAL`, pending open to
   `TRADE_ACTION_PENDING`, position modification to `TRADE_ACTION_SLTP`, pending
-  modification to `TRADE_ACTION_MODIFY`, and close-by to
+  modification to `TRADE_ACTION_MODIFY`, pending-order cancellation to
+  `TRADE_ACTION_REMOVE`, and close-by to
   `TRADE_ACTION_CLOSE_BY` with unswapped ticket roles. MT5 and transport failures
   remain authoritative, and raw responses are retained.
 - **Multi-language type safety**: PASS. Shared protobuf types remain unchanged and
@@ -108,7 +116,7 @@ mt5_grpc_client_csharp/
 |   `-- MetaTrader.Grpc.Client.CompatibilityTests/
 |       `-- NetFramework48ReferenceTests.cs      # extend compile coverage
 |-- examples/
-|   |-- NetStandardClientExample/Program.cs      # five runnable examples
+|   |-- NetStandardClientExample/Program.cs      # six runnable method examples
 |   `-- NetFramework48ClientExample/Program.cs   # surface compatibility
 |-- README.md
 |-- CHANGELOG.md

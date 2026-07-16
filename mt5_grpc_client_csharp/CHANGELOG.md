@@ -4,10 +4,14 @@
 
 ### Added
 
-- Added `OpenOrderAsync`, `ClosePositionAsync`, `ModifyTradeAsync`, and
-  `ClosePositionByAsync` intent-focused operations. Each builds a fresh request,
-  sends at most once, performs no hidden account lookup, and preserves the raw
-  order-send response together with a conservative execution status.
+- Added `OpenOrderAsync`, `ClosePositionAsync`, `CloseOrderAsync`,
+  `ModifyTradeAsync`, and `ClosePositionByAsync` intent-focused operations. Each
+  builds a fresh request, sends at most once, never retries, and preserves the
+  raw order-send response together with a conservative execution status.
+- `ClosePositionAsync` accepts only a position ticket and optional volume, then
+  uses one position lookup and one symbol-info lookup to derive the DEAL fields.
+  `CloseOrderAsync` accepts only a pending-order ticket and maps REMOVE without
+  a lookup.
 - Added deterministic `ClosePositionsByAsync` for one symbol and optional magic
   scope. It freezes initial ticket membership, refreshes before each FIFO pairing
   decision, processes BUY-primary close-by pairs sequentially, never retries an
@@ -19,7 +23,7 @@
 ### Compatibility
 
 - Additive C# client-only release. `SendOrderAsync`, `protos/trade.proto`,
-  `protos/position.proto`, generated bindings, Python packages, server behavior,
+  `protos/position.proto`, `protos/symbol_info.proto`, generated bindings, Python packages, server behavior,
   package targets, dependency groups, proto contract identity
   `protos-005-trade-transaction-events`, and tested server range
   `[0.3.0,1.0.0)` are unchanged.

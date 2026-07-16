@@ -26,8 +26,8 @@ The feature is therefore a backward-compatible client convenience surface.
 
 ## Decision 2 - Public operation names and exact MT5 action mapping
 
-**Decision**: Add five methods to `Mt5GrpcClient`:
-`OpenOrderAsync`, `ClosePositionAsync`, `ModifyTradeAsync`,
+**Decision**: Add six methods to `Mt5GrpcClient`:
+`OpenOrderAsync`, `ClosePositionAsync`, `CloseOrderAsync`, `ModifyTradeAsync`,
 `ClosePositionByAsync`, and `ClosePositionsByAsync` (plural batch). Map them as
 follows:
 
@@ -35,7 +35,8 @@ follows:
 |--------|--------|-------------------------------|
 | Open market buy/sell | `TradeActionDeal` | order type BUY or SELL |
 | Place pending order | `TradeActionPending` | LIMIT/STOP/STOP_LIMIT type |
-| Full/partial position close | `TradeActionDeal` | `position`; order side opposite the supplied position side |
+| Full/partial position close | `TradeActionDeal` | `position`; side/symbol/volume/fill/price derived from position and symbol lookups |
+| Cancel pending order | `TradeActionRemove` | `order`; no lookup or unrelated fields |
 | Modify position protection | `TradeActionSltp` | `position` |
 | Modify pending order | `TradeActionModify` | `order` |
 | Close by opposite position | `TradeActionCloseBy` | `position` plus unswapped `position_by` |
@@ -49,19 +50,23 @@ set it.
 **Alternatives considered**:
 - One method with a caller-supplied raw action: rejected because it recreates
   `SendOrderAsync` and does not deliver intent safety.
-- Implicitly fetch position state for every close: rejected because a financial
-  operation would gain a race-prone extra snapshot and violate the one-send/no-
-  hidden-lookup requirement.
+- Require callers to capture and supply position state for every close: rejected
+  because it makes the intent API cumbersome and duplicates facts already
+  available through position and symbol RPCs.
 
 Sources: [MQL5 trade operation types](https://www.mql5.com/en/docs/constants/tradingconstants/enum_trade_request_actions),
-[MQL5 trade request structure](https://www.mql5.com/en/docs/constants/structures/mqltraderequest).
+[MQL5 trade request structure](https://www.mql5.com/en/docs/constants/structures/mqltraderequest),
+[MQL5 order filling policies](https://www.mql5.com/en/docs/constants/tradingconstants/orderproperties),
+[MQL5 symbol execution and filling properties](https://www.mql5.com/en/docs/constants/environment_state/marketinfoconstants).
 
 ## Decision 3 - Use operation-specific inputs and final-state modification data
 
-**Decision**: Use dedicated C# input DTOs that omit `Action`. Required values are
-constructor-supplied; optional trade values use nullable properties. A full
-close has `Volume = null` and copies the supplied `CurrentVolume`; a partial
-close sets a positive finite `Volume` no greater than that snapshot.
+**Decision**: Use dedicated C# input DTOs that omit `Action` where operations
+need structured values. Position close instead takes a positive ticket and an
+optional positive finite volume; null volume uses the retrieved current volume.
+It retrieves the exact position and symbol info, derives the opposite type,
+symbol, magic, execution price/fill policy, and sends at most once. Pending-order
+close takes only a positive ticket and maps REMOVE directly without lookup.
 
 `ModifyTradeRequest` contains exactly one of a `PositionModification` or a
 `PendingOrderModification`. Each variant describes the complete desired final
@@ -69,6 +74,11 @@ editable state. For position protection, zero explicitly clears SL/TP. For a
 pending order, the caller supplies final price, stop-limit, SL, TP, time policy,
 and applicable expiration. Supplying complete final state avoids treating
 proto3 scalar defaults as "not present" and avoids a hidden account lookup.
+
+For request, instant, and exchange execution, position close maps bid for SELL
+and ask for BUY and uses RETURN. Market execution omits price and prefers
+allowed FOK, falling back to allowed IOC. These choices
+follow MT5's documented execution-mode/fill-policy matrix.
 
 At method entry the executor copies scalar values and clones reference-valued
 protobuf data (for example `Timestamp`) into a new `TradeRequest`; it never
@@ -195,10 +205,10 @@ work instead of replacing it with one outer exception.
 
 **Decision**: Keep request validation/builders and retcode classification pure.
 Place orchestration in an internal `TradeLifecycleExecutor` constructed with
-send-position delegates (or a small internal transport interface). Production
-delegates call the existing public client methods/invoker; unit tests use scripted
-responses and call counters. Add `InternalsVisibleTo` for the unit-test assembly
-if required.
+send, position, and symbol-info delegates (or a small internal transport
+interface). Production delegates call the existing public client methods/invoker;
+unit tests use scripted responses and call counters. Add `InternalsVisibleTo`
+for the unit-test assembly if required.
 
 **Rationale**: The current unit test fixture does not host an in-process gRPC
 server. A narrow internal seam makes financially sensitive ordering, no-retry,
@@ -231,8 +241,10 @@ sufficient and avoids forcing unrelated Python/server releases.
 
 ## Resource bounds and reproducibility summary
 
-- Single operations: one new request object, one existing unary order-send call,
-  no retry or lookup.
+- Single operations: one new request object and at most one existing unary
+  order-send call with no retry. Position close additionally performs one
+  position lookup and one symbol-info lookup under one effective deadline;
+  pending-order close performs no lookup.
 - Batch: one initial symbol response, one active dictionary keyed by frozen
   ticket, one ordered pair/result list, and one remainder list; memory O(N).
   Network calls are one discovery, at most one refresh per pairing decision, and

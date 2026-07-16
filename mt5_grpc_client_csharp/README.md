@@ -9,8 +9,9 @@ Package metadata uses independent client SemVer. The current package version is
 `4.3.0`, with proto contract identity `protos-005-trade-transaction-events` and a
 tested server range of `[0.3.0,1.0.0)`.
 
-> **4.3.0 (additive)**: adds five intent-focused trade lifecycle methods for
-> opening, closing, modifying, single close-by, and automatic multiple close-by.
+> **4.3.0 (additive)**: adds six intent-focused trade lifecycle methods for
+> opening, ticket-only position closing and pending-order cancellation,
+> modifying, single close-by, and automatic multiple close-by.
 > The wire contract, generated bindings, server, and generic `SendOrderAsync`
 > behavior are unchanged.
 
@@ -199,14 +200,18 @@ tokens are forwarded to the generated gRPC call.
 
 ## Trade lifecycle operations
 
-Version 4.3.0 adds five intent-focused methods. They build a fresh
+Version 4.3.0 adds six intent-focused methods. They build a fresh
 `TradeRequest`, choose the MT5 action, perform local structural validation, and
 delegate to the unchanged `SendOrderAsync` path:
 
 - `OpenOrderAsync` opens a market BUY/SELL or places a pending order.
-- `ClosePositionAsync` sends the opposite DEAL for a caller-supplied position
-  snapshot. Omit `Volume` for a full close; set a positive smaller `Volume` for
-  a partial close.
+- `ClosePositionAsync` requires only a position ticket and an optional volume.
+  It retrieves the position and symbol execution settings, derives the opposite
+  DEAL fields internally, and shares one effective deadline across both lookups
+  and the send. Omit volume for a full close; supply a positive volume no greater
+  than the current position volume for a partial close.
+- `CloseOrderAsync` cancels a pending order from its pending-order ticket by
+  mapping it to `TRADE_ACTION_REMOVE`.
 - `ModifyTradeAsync` maps a `PositionModification` to SLTP or a complete final
   `PendingOrderModification` state to MODIFY. Zero SL/TP explicitly clears that
   value when MT5 permits it.
@@ -245,6 +250,19 @@ shared MT5 error payload. Inspect `ExecutionStatus` and `RawRetcode` before
 considering a trade completed. `AcceptedOrPlaced`, `Unknown`, cancellation, and
 transport failures can be execution-uncertain; do not retry them automatically.
 
+Position and pending-order closing require only ticket-oriented calls:
+
+```csharp
+var fullClose = await client.ClosePositionAsync(positionTicket: 1001);
+var partialClose = await client.ClosePositionAsync(positionTicket: 1002, volume: 0.05);
+var cancelledOrder = await client.CloseOrderAsync(orderTicket: 2001);
+```
+
+Invalid tickets or volumes perform no RPC. A valid position close performs one
+ticket-filtered position lookup and one symbol-info lookup before at most one
+order-send RPC. A valid pending-order cancellation performs exactly one
+order-send RPC. Neither operation retries automatically.
+
 Batch close-by is sequential and non-atomic: no rollback is attempted, and a
 later failure does not reverse an earlier successful pair. Inspect every pair,
 plus the deterministic remainder list:
@@ -272,8 +290,9 @@ foreach (var remainder in batch.Remainders)
 ```
 
 The runnable NetStandard and .NET Framework examples contain market/pending
-open, full/partial close, position/pending modification, single close-by, and
-batch inspection. Because they submit real trades, opt in with
+open, full/partial position close, pending-order cancellation,
+position/pending modification, single close-by, and batch inspection. Because
+they submit real trades, opt in with
 `RUN_TRADE_LIFECYCLE_EXAMPLES=1` on a test account after reviewing tickets and
 prices.
 

@@ -17,12 +17,13 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Open and Close a Position (Priority: P1)
+### User Story 1 - Open and Close Trades (Priority: P1)
 
 A client-library user opens a market position or places a pending order through
-an operation whose intent is explicit, and later closes all or part of an open
-position through a dedicated close operation. The user supplies trade details
-but does not manually select the low-level MT5 trade action for either task.
+an operation whose intent is explicit, later closes all or part of an open
+position using only its ticket and an optional volume, and can cancel a pending
+order using only its ticket. The user does not manually select a low-level MT5
+trade action for any of these tasks.
 
 **Why this priority**: Opening and closing are the minimum useful trade
 lifecycle. Making these high-risk actions explicit reduces action-selection
@@ -41,13 +42,14 @@ and trade-execution outcomes.
 2. **Given** valid pending-order details, **When** a user invokes the dedicated
    open operation, **Then** one pending-order request is submitted with its
    price, time policy, expiration, and protection values preserved.
-3. **Given** a current position and its full remaining volume, **When** a user
-   invokes the dedicated close operation, **Then** one opposite-side deal
-   request identifies that position and requests its full closure.
-4. **Given** a current position and a positive volume smaller than its remaining
-   volume, **When** a user invokes the dedicated close operation, **Then** one
-   opposite-side deal request identifies that position and requests only that
-   volume.
+3. **Given** a positive position ticket whose position is open, **When** a user
+   invokes the dedicated close operation without a volume, **Then** the client
+   retrieves the position and symbol execution settings and submits one derived
+   opposite-side deal for its full current volume.
+4. **Given** a positive position ticket and a positive volume no greater than
+   its current remaining volume, **When** a user invokes the dedicated close
+   operation, **Then** the client retrieves the position and symbol execution
+   settings and submits one derived opposite-side deal for only that volume.
 5. **Given** missing or structurally invalid opening or closing inputs, **When**
    the operation is invoked, **Then** it fails clearly before any trade request
    is submitted.
@@ -55,6 +57,9 @@ and trade-execution outcomes.
    code, **When** the user inspects the dedicated operation result, **Then** the
    call outcome shows that a response was received while the execution outcome
    shows that the requested trade did not complete successfully.
+7. **Given** a positive pending-order ticket, **When** a user invokes the
+   dedicated order-close operation, **Then** one REMOVE request identifies that
+   order and no position, order, or symbol lookup is performed.
 
 ---
 
@@ -164,8 +169,13 @@ pairing decisions and outcomes are returned in deterministic order.
 - A market or pending order uses a type that is inconsistent with the selected
   opening variant.
 - A close request specifies zero, negative, non-finite, or greater-than-current
-  volume; structurally invalid volume is rejected locally, while account-state
-  and broker-limit validation remains authoritative at MT5.
+  volume; structurally invalid volume is rejected before lookup, while a volume
+  above the retrieved current volume is rejected before symbol lookup or send.
+- A requested position is missing, duplicated, or has invalid symbol, side, or
+  volume data; the operation returns an actionable failure and submits no trade.
+- A symbol lookup fails, lacks a usable non-market price, or exposes no FOK
+  or IOC mode for market execution; the operation returns an actionable failure
+  and submits no trade.
 - A modification supplies no changed values, clears only one protection value,
   or uses an expiration that is inconsistent with the selected time policy.
 - A position or order changes after the caller captured its details but before
@@ -197,8 +207,8 @@ pairing decisions and outcomes are returned in deterministic order.
 ### Functional Requirements
 
 - **FR-001**: The client library MUST expose dedicated asynchronous operations
-  for opening, closing, modifying, closing by, and processing multiple close-by
-  position pairs.
+  for opening, closing positions, cancelling pending orders, modifying, closing
+  by, and processing multiple close-by position pairs.
 - **FR-002**: A user of a dedicated operation MUST NOT need to set the underlying
   MT5 trade-action value manually; each operation MUST choose the action that
   corresponds to the requested lifecycle intent.
@@ -209,14 +219,15 @@ pairing decisions and outcomes are returned in deterministic order.
   values, including symbol, side/type, volume, price, stop-limit price,
   stop-loss, take-profit, deviation, filling policy, time policy, expiration,
   magic identifier, and comment.
-- **FR-005**: The close operation MUST identify the position being closed and
-  submit an opposite-side immediate deal using the caller-provided symbol,
-  current side, volume, execution price when applicable, deviation, filling
-  policy, magic identifier, and comment.
+- **FR-005**: The position-close operation MUST require only a positive position
+  ticket and an optional volume. It MUST retrieve the current position and its
+  symbol execution settings, then derive the symbol, opposite side, current/full
+  volume, execution price when required, supported filling policy, and magic
+  identifier internally before submitting an immediate deal.
 - **FR-006**: The close operation MUST support both full and partial closure. A
   partial close MUST require an explicit positive finite volume; a full close
-  MUST use the caller-provided current position volume rather than assuming an
-  unverified value.
+  MUST use the retrieved current position volume. A requested partial volume
+  greater than that retrieved volume MUST fail before order submission.
 - **FR-007**: The modification operation MUST distinguish an open-position
   protection change from a pending-order parameter change and MUST select the
   position-protection or pending-order-modification action accordingly.
@@ -241,7 +252,9 @@ pairing decisions and outcomes are returned in deterministic order.
 - **FR-013**: Each dedicated single-order operation MUST submit no more than one
   underlying order-send request and MUST NOT perform an implicit retry, because
   retrying an execution request can duplicate a trade when the first outcome is
-  uncertain.
+  uncertain. Position close MAY perform one ticket-filtered position lookup and
+  one symbol-info lookup before that send; pending-order cancellation MUST
+  perform no lookup.
 - **FR-014**: All single-order operations MUST return the same typed success,
   transport failure, cancellation/deadline failure, and MT5 error-payload
   information available through the existing generic send operation. When a
@@ -278,17 +291,20 @@ pairing decisions and outcomes are returned in deterministic order.
 - **FR-021**: Dedicated operations MUST honor the client's existing deadline,
   cancellation, security, logging, and error-mapping behavior. Logs MUST identify
   the lifecycle operation and batch item when applicable without exposing
-  account credentials or dumping complete trade payloads.
+  account credentials or dumping complete trade payloads. A position close MUST
+  capture one effective deadline and pass it with the same cancellation token to
+  both lookups and the send.
 - **FR-022**: The existing generic `SendOrderAsync` operation MUST remain
   available with unchanged source behavior and remain the escape hatch for
   advanced or future MT5 trade requests not covered by dedicated operations.
-- **FR-023**: Dedicated operations MUST NOT mutate request objects, position
-  snapshots, order snapshots, or discovery criteria supplied by the caller.
+- **FR-023**: Dedicated operations MUST NOT mutate request objects, lookup
+  responses, position snapshots, order snapshots, or discovery criteria.
 - **FR-024**: Documentation MUST include independently runnable examples for all
-  five operation categories, explain full versus partial close, distinguish
-  position modification from pending-order modification, state close-by's
-  hedging-account constraints, show per-pair batch result inspection, and warn
-  against automatic retry after uncertain execution outcomes.
+  six public lifecycle methods, including ticket-only full/partial position
+  close and pending-order cancellation, distinguish position modification from
+  pending-order modification, state close-by's hedging-account constraints, show
+  per-pair batch result inspection, and warn against automatic retry after
+  uncertain execution outcomes.
 - **FR-025**: The dedicated operations and their result types MUST remain usable
   on every target framework supported by the current client package, including
   the existing .NET Framework compatibility target.
@@ -306,14 +322,19 @@ pairing decisions and outcomes are returned in deterministic order.
   comment, request identifier, external return code, and echoed request. An
   unrecognized future return code MUST be preserved exactly, classified as an
   unknown execution outcome, and MUST NOT be assumed successful.
+- **FR-029**: `CloseOrderAsync` MUST require only a positive pending-order ticket
+  and map it to `TRADE_ACTION_REMOVE` with the `order` field set and no position
+  field. Invalid tickets MUST perform zero RPCs; valid tickets MUST perform
+  exactly one order-send RPC and no lookup or retry.
 
 ### Protocol and MT5 Contract Impact *(mandatory)*
 
 - **Affected RPCs/Messages**: Existing `OrderSendService.SendOrder`,
-  `OrderSendRequest.trade_request`, `OrderSendResponse`, `TradeRequest`, and
-  `TradeResult` are reused. No new RPC, message, field, enum value, or field
-  number is required. The existing client `SendOrderAsync` remains unchanged;
-  the new behavior is an additive convenience surface over it.
+  `PositionsService.GetPositions`, `SymbolInfoService.GetSymbolInfo`, their
+  request/response messages, `TradeRequest`, and `TradeResult` are reused. No new
+  RPC, message, field, enum value, or field number is required. The existing
+  client wrappers remain unchanged; the new behavior is a convenience surface
+  over them.
 - **Compatibility Decision**: Backward-compatible client-library addition. Wire
   behavior and server behavior do not change. The client package can receive an
   additive minor-version release; existing callers can continue using the
@@ -321,8 +342,9 @@ pairing decisions and outcomes are returned in deterministic order.
 - **MT5 Operation Mapping**: Market open and position close use
   `TRADE_ACTION_DEAL`; pending open uses `TRADE_ACTION_PENDING`; position
   stop-loss/take-profit modification uses `TRADE_ACTION_SLTP`; pending-order
-  modification uses `TRADE_ACTION_MODIFY`; close-by uses
-  `TRADE_ACTION_CLOSE_BY` with `position` and `position_by`. Multiple close-by
+  modification uses `TRADE_ACTION_MODIFY`; pending-order cancellation uses
+  `TRADE_ACTION_REMOVE`; close-by uses `TRADE_ACTION_CLOSE_BY` with `position`
+  and `position_by`. Multiple close-by
   invokes the same close-by mapping once per ordered pair. MT5 return codes and
   terminal error payloads remain authoritative and are never replaced by a
   client-defined execution-success interpretation.
@@ -339,8 +361,9 @@ pairing decisions and outcomes are returned in deterministic order.
 - **Multiple Close-By Scope**: One required symbol and one optional magic number
   defining the only account positions eligible for initial automatic discovery;
   the discovered ticket identities form a fixed membership set for the invocation.
-- **Position Reference**: A positive position ticket plus the current symbol,
-  side, and volume needed for closing or modifying that position.
+- **Position Reference**: A positive position ticket supplied by the caller;
+  position and symbol RPC responses provide the current symbol, side, volume,
+  execution mode, filling capabilities, price, and magic needed for closing.
 - **Pending Order Reference**: A positive pending-order ticket plus the editable
   price, protection, and expiration values relevant to modification.
 - **Close-By Pair**: A deterministically selected primary position ticket and
@@ -361,16 +384,19 @@ pairing decisions and outcomes are returned in deterministic order.
 
 ### Measurable Outcomes
 
-- **SC-001**: Developers can express all five requested operation categories
+- **SC-001**: Developers can express all six lifecycle methods
   through one clearly named operation each, with zero manually assigned MT5
   trade-action values in caller code.
 - **SC-002**: Contract tests verify 100% correct action and identifier mapping
   for market open, pending open, full close, partial close, position modify,
-  pending-order modify, and close-by scenarios, with zero mapping mismatches.
+  pending-order modify, pending-order cancellation, and close-by scenarios, with
+  zero mapping mismatches.
 - **SC-003**: Every structurally invalid input case defined in FR-011 and FR-019
   produces zero order submissions and a specific actionable failure.
-- **SC-004**: Each dedicated single-order operation uses exactly one order-send
-  submission and adds no implicit account lookup or retry.
+- **SC-004**: Each dedicated single-order operation uses at most one order-send
+  submission and adds no retry. Position close uses exactly one position lookup
+  and one symbol-info lookup before a valid send; pending-order cancellation
+  uses no lookup.
 - **SC-005**: For `N` eligible close-by pairs automatically discovered within the
   required symbol and optional magic-number scope when the operation is not
   cancelled, the result contains exactly `N` outcomes in the documented
@@ -381,12 +407,12 @@ pairing decisions and outcomes are returned in deterministic order.
   classified as completed, failed, or unattempted.
 - **SC-007**: Existing generic send-operation contract tests continue to pass
   unchanged, demonstrating no regression for current callers.
-- **SC-008**: The five documented examples compile on all supported client
+- **SC-008**: The six documented method examples compile on all supported client
   targets and let a developer inspect the MT5 trade return code or structured
   failure for every submitted operation.
 - **SC-009**: In a documentation usability review, a developer familiar with the
   existing client can select and call the correct dedicated operation for each
-  of the five lifecycle tasks on the first attempt in at least 9 of 10 cases.
+  of the six lifecycle tasks on the first attempt in at least 9 of 10 cases.
 - **SC-010**: In concurrent-change tests, 100% of initially discovered tickets
   are refreshed before pairing, positions that become ineligible produce no new
   request, and positions opened after discovery produce zero outcomes.
@@ -401,16 +427,16 @@ pairing decisions and outcomes are returned in deterministic order.
 ## Assumptions
 
 - "Opening" includes immediate market orders and placement of pending orders;
-  cancellation/removal of pending orders is outside this feature because it was
-  not one of the requested lifecycle operations and remains possible through
-  the generic send operation.
+  `CloseOrderAsync` cancels/removes an active pending order through the existing
+  REMOVE action.
 - "Modifying" includes both stop-loss/take-profit changes to an open position
   and editable changes to a pending order; these variants have distinct MT5
   action mappings but belong to one public modification capability.
-- A close operation supports full or partial position closure and receives a
-  current position snapshot or equivalent explicit values. It does not silently
-  fetch account state, because that would add latency and introduce a second
-  state snapshot before a financially consequential request.
+- A close operation supports full or partial position closure and accepts only
+  the position ticket plus optional volume. It intentionally fetches the current
+  position and symbol execution settings, sharing one effective deadline across
+  those reads and the single send. MT5 remains authoritative if state changes
+  after the lookups.
 - "Multiple close-by" automatically discovers and pairs all eligible opposite
   positions for one required symbol, restricted to one magic number when that
   optional filter is supplied. Eligible buys and sells are paired oldest-first,
