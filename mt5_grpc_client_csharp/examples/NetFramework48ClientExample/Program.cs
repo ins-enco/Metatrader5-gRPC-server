@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.Protobuf.WellKnownTypes;
 using MetaTrader.Grpc.Client;
 using Metatrader.V1;
 
@@ -99,6 +100,77 @@ internal static class Program
             Console.WriteLine(send.IsSuccess
                 ? send.Value!.TradeResult?.Retcode.ToString()
                 : $"{send.Error!.Operation}: {send.Error.Message}");
+
+            // Opt in only on a test account: these examples submit real trades.
+            if (Environment.GetEnvironmentVariable("RUN_TRADE_LIFECYCLE_EXAMPLES") == "1")
+            {
+                await RunTradeLifecycleExamplesAsync(client);
+            }
         }
+    }
+
+    private static async Task RunTradeLifecycleExamplesAsync(Mt5GrpcClient client)
+    {
+        const string symbol = "EURUSD";
+        const long buyTicket = 1001;
+        const long sellTicket = 1002;
+        const long pendingTicket = 2001;
+
+        var market = await client.OpenOrderAsync(new OpenOrderRequest(
+            symbol, ENUM_ORDER_TYPE.OrderTypeBuy, 0.01)
+        {
+            FillingPolicy = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
+            TimePolicy = ENUM_ORDER_TYPE_TIME.OrderTimeGtc
+        });
+        PrintTradeOutcome("market open", market);
+
+        var pending = await client.OpenOrderAsync(new OpenOrderRequest(
+            symbol, ENUM_ORDER_TYPE.OrderTypeBuyLimit, 0.01)
+        {
+            Price = 1.00,
+            //TimePolicy = ENUM_ORDER_TYPE_TIME.OrderTimeSpecified,
+            //Expiration = Timestamp.FromDateTime(DateTime.UtcNow.AddHours(1))
+        });
+        PrintTradeOutcome("pending open", pending);
+
+        var fullClose = await client.ClosePositionAsync(buyTicket);
+        PrintTradeOutcome("full close", fullClose);
+
+        var partialClose = await client.ClosePositionAsync(sellTicket, 0.01);
+        PrintTradeOutcome("partial close", partialClose);
+
+        var positionModify = await client.ModifyTradeAsync(new ModifyTradeRequest(
+            new PositionModification(buyTicket, 0, 2.00)));
+        PrintTradeOutcome("position modify", positionModify);
+
+        var pendingModify = await client.ModifyTradeAsync(new ModifyTradeRequest(
+            new PendingOrderModification(
+                pendingTicket, 1.01, 0, 0.95, 1.05, ENUM_ORDER_TYPE_TIME.OrderTimeGtc)));
+        PrintTradeOutcome("pending modify", pendingModify);
+
+        var closeOrder = await client.CloseOrderAsync(pendingTicket);
+        PrintTradeOutcome("pending order close", closeOrder);
+
+        var closeBy = await client.ClosePositionByAsync(new CloseByRequest(buyTicket, sellTicket));
+        PrintTradeOutcome("single close-by", closeBy);
+
+        var batch = await client.ClosePositionsByAsync(new ClosePositionsByRequest(symbol));
+        Console.WriteLine($"batch status={batch.Status}; non-atomic pair count={batch.Pairs.Count}");
+        foreach (var pair in batch.Pairs)
+        {
+            if (pair.OperationResult != null)
+            {
+                PrintTradeOutcome($"pair {pair.PairIndex}", pair.OperationResult);
+            }
+        }
+
+        // Never retry a transport-uncertain result automatically; reconcile first.
+    }
+
+    private static void PrintTradeOutcome(string label, TradeOperationResult result)
+    {
+        Console.WriteLine(result.CallResult.IsSuccess
+            ? $"{label}: execution={result.ExecutionStatus}, retcode={result.RawRetcode}"
+            : $"{label}: call failed: {result.CallResult.Error!.Message}");
     }
 }

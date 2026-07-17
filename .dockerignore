@@ -1,6 +1,12 @@
 .git
+.dockerignore
+Dockerfile*
 .claude
 .venv
+.env*
+*.log*
+node_modules/
+coverage/
 **/__pycache__/
 **/.pytest_cache/
 **/bin/

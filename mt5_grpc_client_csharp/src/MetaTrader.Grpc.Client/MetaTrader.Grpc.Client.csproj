@@ -5,7 +5,7 @@
     <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
     <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
     <PackageId>MetaTrader.Grpc.Client</PackageId>
-    <Version>4.2.0</Version>
+    <Version>5.0.0</Version>
     <Authors>MetaTrader gRPC</Authors>
     <Company>MetaTrader gRPC</Company>
     <Description>C# client library for the MetaTrader 5 gRPC server contracts.</Description>
@@ -15,7 +15,7 @@
     <ProtoContractIdentity>protos-005-trade-transaction-events</ProtoContractIdentity>
     <TestedServerVersionRange>[0.3.0,1.0.0)</TestedServerVersionRange>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>4.2.0: adds a .NET Framework (net472) target that carries the legacy Grpc.Core native channel, enabling gRPC on .NET Framework 4.7.2+/Windows 10 where GrpcChannel + WinHttpHandler fails ("HTTP/2 features required by gRPC" not supported). New API: Mt5GrpcClientFactory.CreateCore / CreateCoreChannel (net472+ only). Mt5GrpcClient now accepts ChannelBase so the same typed client works with either GrpcChannel or Grpc.Core.Channel. Modern (netstandard2.0/.NET) consumers are unaffected and do not pull in the native lib. Proto contract identity: protos-005-trade-transaction-events. Tested server range: [0.3.0,1.0.0).</PackageReleaseNotes>
+    <PackageReleaseNotes>5.0.0: adds OpenOrderAsync, ticket-only ClosePositionAsync, ticket-only CloseOrderAsync for pending-order cancellation, ModifyTradeAsync, ClosePositionByAsync, and deterministic ClosePositionsByAsync lifecycle helpers with separate call/execution status and no implicit retry. Position close derives request fields through one position and one symbol-info lookup; order close maps REMOVE without lookup. This is a C# client-only additive release: SendOrderAsync, proto/generated bindings, server behavior, target frameworks, and dependency groups are unchanged. Proto contract identity: protos-005-trade-transaction-events. Tested server range: [0.3.0,1.0.0).</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
@@ -47,6 +47,9 @@
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>MetaTrader.Grpc.Client.ContractTests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>MetaTrader.Grpc.Client.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 </Project>

@@ -1,5 +1,8 @@
 using System.IO;
 using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using MetaTrader.Grpc.Client;
 using Metatrader.V1;
@@ -62,6 +65,61 @@ namespace MetaTrader.Grpc.Client.CompatibilityTests
             Assert.Equal(1, (int)parsed.Type);
             Assert.Equal(2, (int)parsed.TypeFilling);
             Assert.Equal(1, (int)parsed.TypeTime);
+        }
+
+        [Fact]
+        public void NetFramework48_consumers_can_reference_every_trade_lifecycle_type_and_signature()
+        {
+            var expectedMethods = new[]
+            {
+                new { Name = "OpenOrderAsync", Request = typeof(OpenOrderRequest), Result = typeof(Task<TradeOperationResult>) },
+                new { Name = "ModifyTradeAsync", Request = typeof(ModifyTradeRequest), Result = typeof(Task<TradeOperationResult>) },
+                new { Name = "ClosePositionByAsync", Request = typeof(CloseByRequest), Result = typeof(Task<TradeOperationResult>) },
+                new { Name = "ClosePositionsByAsync", Request = typeof(ClosePositionsByRequest), Result = typeof(Task<MultipleCloseByResult>) }
+            };
+
+            foreach (var expected in expectedMethods)
+            {
+                var method = typeof(Mt5GrpcClient).GetMethod(expected.Name);
+                Assert.NotNull(method);
+                Assert.Equal(expected.Result, method!.ReturnType);
+                Assert.Equal(
+                    new[] { expected.Request, typeof(DateTime?), typeof(CancellationToken) },
+                    method.GetParameters().Select(parameter => parameter.ParameterType));
+                Assert.True(method.GetParameters()[1].IsOptional);
+                Assert.True(method.GetParameters()[2].IsOptional);
+            }
+
+            var closePosition = typeof(Mt5GrpcClient).GetMethod("ClosePositionAsync");
+            Assert.NotNull(closePosition);
+            Assert.Equal(typeof(Task<TradeOperationResult>), closePosition!.ReturnType);
+            Assert.Equal(
+                new[] { typeof(long), typeof(double?), typeof(DateTime?), typeof(CancellationToken) },
+                closePosition.GetParameters().Select(parameter => parameter.ParameterType));
+            Assert.True(closePosition.GetParameters()[1].IsOptional);
+            Assert.True(closePosition.GetParameters()[2].IsOptional);
+            Assert.True(closePosition.GetParameters()[3].IsOptional);
+
+            var closeOrder = typeof(Mt5GrpcClient).GetMethod("CloseOrderAsync");
+            Assert.NotNull(closeOrder);
+            Assert.Equal(typeof(Task<TradeOperationResult>), closeOrder!.ReturnType);
+            Assert.Equal(
+                new[] { typeof(long), typeof(DateTime?), typeof(CancellationToken) },
+                closeOrder.GetParameters().Select(parameter => parameter.ParameterType));
+            Assert.True(closeOrder.GetParameters()[1].IsOptional);
+            Assert.True(closeOrder.GetParameters()[2].IsOptional);
+
+            _ = new OpenOrderRequest("EURUSD", ENUM_ORDER_TYPE.OrderTypeBuy, 0.1);
+            _ = new ModifyTradeRequest(new PositionModification(1, 0, 0));
+            _ = new ModifyTradeRequest(new PendingOrderModification(
+                2, 1, 0, 0, 0, ENUM_ORDER_TYPE_TIME.OrderTimeGtc));
+            _ = new CloseByRequest(1, 2);
+            _ = new ClosePositionsByRequest("EURUSD");
+            _ = new CloseByPairOutcome(1, 1, 2, PairAttemptState.Unattempted, null);
+            _ = new PositionRemainder(1, 0.1, PositionRemainderReason.NoOpposite);
+            Assert.Equal(6, Enum.GetValues(typeof(TradeLifecycleOperation)).Length);
+            Assert.Equal(5, Enum.GetValues(typeof(TradeExecutionStatus)).Length);
+            Assert.Equal(6, Enum.GetValues(typeof(MultipleCloseByStatus)).Length);
         }
     }
 }

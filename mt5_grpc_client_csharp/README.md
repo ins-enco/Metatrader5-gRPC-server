@@ -6,8 +6,14 @@ clients for advanced callers and a thin wrapper that returns typed
 `Mt5GrpcResult<T>` values for convenience calls.
 
 Package metadata uses independent client SemVer. The current package version is
-`0.3.0`, with proto contract identity `protos-005-trade-transaction-events` and a
+`5.0.0`, with proto contract identity `protos-005-trade-transaction-events` and a
 tested server range of `[0.3.0,1.0.0)`.
+
+> **5.0.0 (additive)**: adds six intent-focused trade lifecycle methods for
+> opening, ticket-only position closing and pending-order cancellation,
+> modifying, single close-by, and automatic multiple close-by.
+> The wire contract, generated bindings, server, and generic `SendOrderAsync`
+> behavior are unchanged.
 
 > **0.3.0 (additive)**: adds `TradeEventsService.SubscribeTradeTransactions`, the
 > first server-streaming RPC. See [Trade transaction events](#trade-transaction-events).
@@ -63,7 +69,7 @@ token is committed — the credentials are read from the environment:
 ### 3. Add the single reference
 
 ```xml
-<PackageReference Include="MetaTrader.Grpc.Client" Version="0.2.0" />
+<PackageReference Include="MetaTrader.Grpc.Client" Version="5.0.0" />
 ```
 
 Restore resolves the package **and** all of its runtime dependencies
@@ -74,7 +80,7 @@ and `Grpc.Tools` never enters your project. Then use the client as shown in
 
 ### Stable vs. pre-release versions
 
-Production versions use plain SemVer (`0.2.0`). Pre-release builds carry a SemVer
+Production versions use plain SemVer (`5.0.0`). Pre-release builds carry a SemVer
 pre-release suffix (for example `0.3.0-preview.1`). NuGet **excludes pre-release
 versions by default**, so a normal restore only picks stable versions; opt in
 explicitly (e.g. `dotnet add package MetaTrader.Grpc.Client --prerelease`, or a
@@ -91,14 +97,15 @@ floating `0.3.0-*` version) to consume a pre-release.
   supported set fails restore/build clearly rather than producing a subtly
   non-working client.
 
-.NET Framework 4.8 consumers reference the same `netstandard2.0` package but must
-satisfy the transport prerequisite below.
+.NET Framework 4.8 consumers use the package's `net472` asset and native
+`Grpc.Core` channel as described below.
 
-### .NET Framework 4.8 transport prerequisite
+### .NET Framework 4.8 transport
 
-gRPC-over-HTTP/2 on net48 requires TLS and `System.Net.Http.WinHttpHandler` on the
-channel. See the `examples/NetFramework48ClientExample` project for the exact
-`WinHttpHandler` setup.
+Use `Mt5GrpcClientFactory.CreateCore` on .NET Framework 4.8. The package's
+`net472` dependency group carries the legacy native `Grpc.Core` transport, so
+the consumer does not add `WinHttpHandler` directly. See
+`examples/NetFramework48ClientExample` for a complete example.
 
 ## Build
 
@@ -191,6 +198,104 @@ Wrapper methods do not impose a built-in timeout. A client-wide
 `DefaultDeadline` is optional, and a per-call deadline overrides it. Cancellation
 tokens are forwarded to the generated gRPC call.
 
+## Trade lifecycle operations
+
+Version 5.0.0 adds six intent-focused methods. They build a fresh
+`TradeRequest`, choose the MT5 action, perform local structural validation, and
+delegate to the unchanged `SendOrderAsync` path:
+
+- `OpenOrderAsync` opens a market BUY/SELL or places a pending order.
+- `ClosePositionAsync` requires only a position ticket and an optional volume.
+  It retrieves the position and symbol execution settings, derives the opposite
+  DEAL fields internally, and shares one effective deadline across both lookups
+  and the send. Omit volume for a full close; supply a positive volume no greater
+  than the current position volume for a partial close.
+- `CloseOrderAsync` cancels a pending order from its pending-order ticket by
+  mapping it to `TRADE_ACTION_REMOVE`.
+- `ModifyTradeAsync` maps a `PositionModification` to SLTP or a complete final
+  `PendingOrderModification` state to MODIFY. Zero SL/TP explicitly clears that
+  value when MT5 permits it.
+- `ClosePositionByAsync` preserves the two caller-supplied ticket roles. Close-by
+  requires compatible opposite positions on a hedging account; MT5 remains
+  authoritative for live account and symbol rules.
+- `ClosePositionsByAsync` discovers one symbol and optional magic scope, freezes
+  its initial tickets, refreshes that membership, and submits FIFO close-by pairs
+  sequentially.
+
+Every single-operation result separates the gRPC/shared-error outcome from the
+MT5 execution outcome:
+
+```csharp
+var open = await client.OpenOrderAsync(new OpenOrderRequest(
+    "EURUSD", ENUM_ORDER_TYPE.OrderTypeBuy, 0.10)
+{
+    FillingPolicy = ENUM_ORDER_TYPE_FILLING.OrderFillingIoc,
+    TimePolicy = ENUM_ORDER_TYPE_TIME.OrderTimeGtc,
+    StopLoss = 1.0750,
+    TakeProfit = 1.0950
+});
+
+if (!open.CallResult.IsSuccess)
+{
+    Console.WriteLine(open.CallResult.Error!.Message);
+}
+else
+{
+    Console.WriteLine($"execution={open.ExecutionStatus}, retcode={open.RawRetcode}");
+}
+```
+
+`CallResult.IsSuccess` only means an order-send response was received without a
+shared MT5 error payload. Inspect `ExecutionStatus` and `RawRetcode` before
+considering a trade completed. `AcceptedOrPlaced`, `Unknown`, cancellation, and
+transport failures can be execution-uncertain; do not retry them automatically.
+
+Position and pending-order closing require only ticket-oriented calls:
+
+```csharp
+var fullClose = await client.ClosePositionAsync(positionTicket: 1001);
+var partialClose = await client.ClosePositionAsync(positionTicket: 1002, volume: 0.05);
+var cancelledOrder = await client.CloseOrderAsync(orderTicket: 2001);
+```
+
+Invalid tickets or volumes perform no RPC. A valid position close performs one
+ticket-filtered position lookup and one symbol-info lookup before at most one
+order-send RPC. A valid pending-order cancellation performs exactly one
+order-send RPC. Neither operation retries automatically.
+
+Batch close-by is sequential and non-atomic: no rollback is attempted, and a
+later failure does not reverse an earlier successful pair. Inspect every pair,
+plus the deterministic remainder list:
+
+```csharp
+var batch = await client.ClosePositionsByAsync(new ClosePositionsByRequest("EURUSD")
+{
+    Magic = 42,
+    Comment = "strategy-close-by"
+});
+
+foreach (var pair in batch.Pairs)
+{
+    Console.WriteLine($"{pair.PairIndex}: {pair.PositionTicket}/{pair.OppositePositionTicket} {pair.AttemptState}");
+    if (pair.OperationResult != null)
+    {
+        Console.WriteLine($"call={pair.OperationResult.CallResult.IsSuccess}, execution={pair.OperationResult.ExecutionStatus}");
+    }
+}
+
+foreach (var remainder in batch.Remainders)
+{
+    Console.WriteLine($"remainder {remainder.Ticket}: {remainder.Reason}");
+}
+```
+
+The runnable NetStandard and .NET Framework examples contain market/pending
+open, full/partial position close, pending-order cancellation,
+position/pending modification, single close-by, and batch inspection. Because
+they submit real trades, opt in with
+`RUN_TRADE_LIFECYCLE_EXAMPLES=1` on a test account after reviewing tickets and
+prices.
+
 ## Security
 
 Plaintext endpoints are allowed by default when no TLS options are supplied:
@@ -219,9 +324,10 @@ payload dumps and credentials.
 ## Examples
 
 The `examples/NetStandardClientExample` project demonstrates account, symbol,
-market data, order validation, order submission, and typed error handling. The
-`examples/NetFramework48ClientExample` project demonstrates .NET Framework 4.8
-usage with TLS and `WinHttpHandler`.
+market data, order validation, order submission, lifecycle operations, and typed
+error handling. The `examples/NetFramework48ClientExample` project demonstrates
+.NET Framework 4.8 usage with the native `Grpc.Core` channel and the same
+lifecycle surface.
 
 Expected output for the live examples is either the requested account login or a
 typed failure line in the form `Service.Method: failure message`.
@@ -283,8 +389,8 @@ last received `TimeMsc`; the boundary deal is de-duplicated so there is no gap a
 no duplicate.
 
 .NET Framework 4.8 consumers can reference the `netstandard2.0` package, but
-gRPC over HTTP/2 requires TLS and `WinHttpHandler`. Server-streaming support
-depends on the Windows host and is not guaranteed on all .NET Framework deployments.
+gRPC uses the package's native `Grpc.Core` transport. Server-streaming support
+still depends on the Windows host and is not guaranteed on all .NET Framework deployments.
 
 ## Publishing a new version (maintainers)
 
@@ -312,8 +418,8 @@ built-in `GITHUB_TOKEN`).
 3. **Tag and push** — the tag version must equal `<Version>`:
 
    ```powershell
-   git tag csharp-client-v0.2.0
-   git push origin csharp-client-v0.2.0
+   git tag csharp-client-v5.0.0
+   git push origin csharp-client-v5.0.0
    ```
 
 The client-scoped [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)
