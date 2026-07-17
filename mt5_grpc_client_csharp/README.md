@@ -6,10 +6,10 @@ clients for advanced callers and a thin wrapper that returns typed
 `Mt5GrpcResult<T>` values for convenience calls.
 
 Package metadata uses independent client SemVer. The current package version is
-`4.3.0`, with proto contract identity `protos-005-trade-transaction-events` and a
+`5.0.0`, with proto contract identity `protos-005-trade-transaction-events` and a
 tested server range of `[0.3.0,1.0.0)`.
 
-> **4.3.0 (additive)**: adds six intent-focused trade lifecycle methods for
+> **5.0.0 (additive)**: adds six intent-focused trade lifecycle methods for
 > opening, ticket-only position closing and pending-order cancellation,
 > modifying, single close-by, and automatic multiple close-by.
 > The wire contract, generated bindings, server, and generic `SendOrderAsync`
@@ -69,7 +69,7 @@ token is committed — the credentials are read from the environment:
 ### 3. Add the single reference
 
 ```xml
-<PackageReference Include="MetaTrader.Grpc.Client" Version="4.3.0" />
+<PackageReference Include="MetaTrader.Grpc.Client" Version="5.0.0" />
 ```
 
 Restore resolves the package **and** all of its runtime dependencies
@@ -80,7 +80,7 @@ and `Grpc.Tools` never enters your project. Then use the client as shown in
 
 ### Stable vs. pre-release versions
 
-Production versions use plain SemVer (`4.3.0`). Pre-release builds carry a SemVer
+Production versions use plain SemVer (`5.0.0`). Pre-release builds carry a SemVer
 pre-release suffix (for example `0.3.0-preview.1`). NuGet **excludes pre-release
 versions by default**, so a normal restore only picks stable versions; opt in
 explicitly (e.g. `dotnet add package MetaTrader.Grpc.Client --prerelease`, or a
@@ -200,7 +200,7 @@ tokens are forwarded to the generated gRPC call.
 
 ## Trade lifecycle operations
 
-Version 4.3.0 adds six intent-focused methods. They build a fresh
+Version 5.0.0 adds six intent-focused methods. They build a fresh
 `TradeRequest`, choose the MT5 action, perform local structural validation, and
 delegate to the unchanged `SendOrderAsync` path:
 
@@ -418,8 +418,8 @@ built-in `GITHUB_TOKEN`).
 3. **Tag and push** — the tag version must equal `<Version>`:
 
    ```powershell
-   git tag csharp-client-v4.3.0
-   git push origin csharp-client-v4.3.0
+   git tag csharp-client-v5.0.0
+   git push origin csharp-client-v5.0.0
    ```
 
 The client-scoped [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)
