@@ -50,6 +50,33 @@ namespace MetaTrader.Grpc.Client.Tests
 
             Assert.Equal(StatusCode.Unavailable, error.StatusCode);
             Assert.Same(exception, error.Exception);
+            Assert.Null(error.Mt5ErrorCode);
+        }
+
+        [Fact]
+        public void Mapper_reads_mt5_error_code_from_trailers()
+        {
+            var trailers = new Metadata { { "mt5-error-code", "-6" } };
+            var exception = new RpcException(
+                new Status(StatusCode.Internal, "Failed to initialize default MetaTrader5: Authorization failed"),
+                trailers);
+
+            var error = Mt5GrpcErrorMapper.FromRpcException("MetaTraderService.Connect", exception);
+
+            Assert.Equal(StatusCode.Internal, error.StatusCode);
+            Assert.Equal(-6, error.Mt5ErrorCode);
+            Assert.Equal("Failed to initialize default MetaTrader5: Authorization failed", error.Mt5ErrorMessage);
+        }
+
+        [Fact]
+        public void Mapper_ignores_non_numeric_mt5_error_code_trailer()
+        {
+            var trailers = new Metadata { { "mt5-error-code", "not-a-number" } };
+            var exception = new RpcException(new Status(StatusCode.Internal, "boom"), trailers);
+
+            var error = Mt5GrpcErrorMapper.FromRpcException("op", exception);
+
+            Assert.Null(error.Mt5ErrorCode);
         }
 
         [Fact]
