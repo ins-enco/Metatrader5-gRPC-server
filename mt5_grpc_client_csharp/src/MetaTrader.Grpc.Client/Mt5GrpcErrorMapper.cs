@@ -25,7 +25,7 @@ namespace MetaTrader.Grpc.Client
 
         public static Mt5GrpcError FromRpcException(string operation, RpcException exception)
         {
-            return new Mt5GrpcError
+            var error = new Mt5GrpcError
             {
                 Operation = operation,
                 StatusCode = exception.StatusCode,
@@ -33,6 +33,19 @@ namespace MetaTrader.Grpc.Client
                 Trailers = exception.Trailers,
                 Exception = exception
             };
+
+            // Some server operations (e.g. Connect) abort with a gRPC status instead of
+            // returning an Error payload. In that case the native MT5 error code is carried
+            // in trailing metadata so callers don't need a separate GetLastError round-trip.
+            // The human-readable message is already in Status.Detail (Message above).
+            var codeEntry = exception.Trailers.Get("mt5-error-code");
+            if (codeEntry != null && int.TryParse(codeEntry.Value, out var mt5Code))
+            {
+                error.Mt5ErrorCode = mt5Code;
+                error.Mt5ErrorMessage = exception.Status.Detail;
+            }
+
+            return error;
         }
 
         public static Mt5GrpcError FromCancellation(string operation, OperationCanceledException exception)

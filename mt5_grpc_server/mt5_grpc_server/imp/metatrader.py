@@ -38,13 +38,37 @@ class MetaTraderServiceImpl(MetaTraderServiceServicer):
             # Set the path for MetaTrader5 initialization
             if not mt5.initialize(path=request.path, login=request.login, password=request.password, server=request.server):
                 error_code, error_message = mt5.last_error()
-                context.abort(grpc.StatusCode.INTERNAL, f"Failed to initialize MetaTrader5 ({request.path}): {error_message}")
+                self._abort_with_mt5_error(
+                    context,
+                    error_code,
+                    error_message,
+                    f"Failed to initialize MetaTrader5 ({request.path}): {error_message}",
+                )
                 return None
         else:
             # Initialize with default path
             if not mt5.initialize(login=request.login, password=request.password, server=request.server):
                 error_code, error_message = mt5.last_error()
-                context.abort(grpc.StatusCode.INTERNAL, f"Failed to initialize default MetaTrader5: {error_message}")
+                self._abort_with_mt5_error(
+                    context,
+                    error_code,
+                    error_message,
+                    f"Failed to initialize default MetaTrader5: {error_message}",
+                )
                 return None
 
         return response
+
+    @staticmethod
+    def _abort_with_mt5_error(context, error_code, error_message, details):
+        """Abort the RPC while surfacing the native MT5 error code to the client.
+
+        The numeric ``last_error()`` code (e.g. ``-6`` = RES_E_AUTH_FAILED) is not
+        part of the gRPC status, so it is attached as trailing metadata under
+        ``mt5-error-code``. Clients can read it without a separate GetLastError
+        round-trip. The human-readable message is already carried in ``details``.
+        """
+        context.set_trailing_metadata((
+            ("mt5-error-code", str(error_code)),
+        ))
+        context.abort(grpc.StatusCode.INTERNAL, details)
