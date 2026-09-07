@@ -32,6 +32,7 @@ setup(
     entry_points={
         "console_scripts": [
             "mt5-grpc-server=mt5_grpc_server.grpc_server:main",
+            "mt5-bridge-worker=mt5_grpc_server.bridge.worker:main",
         ],
     },
     classifiers=[

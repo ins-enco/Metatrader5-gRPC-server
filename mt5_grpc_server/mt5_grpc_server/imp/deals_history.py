@@ -1,5 +1,9 @@
-import MetaTrader5 as mt5
 from typing import Optional, Tuple
+
+import grpc
+
+from ..bridge.client import BridgeUnavailable
+from ..mt5_source import mt5
 from mt5_grpc_proto.deal_pb2 import (
     DealsRequest,
     DealsResponse,
@@ -94,6 +98,12 @@ class TradeHistoryServiceImpl(TradeHistoryServiceServicer):
                 response.deals.append(deal_proto)
 
             return response
+
+        except BridgeUnavailable as e:
+            # The Wine-side worker is not reachable, so this is a transport
+            # problem rather than an MT5 result. Report it out of band so the
+            # caller can retry instead of reading an empty deal list as truth.
+            context.abort(grpc.StatusCode.UNAVAILABLE, str(e))
 
         except Exception as e:
             response.error.code = -1  # RES_E_FAIL
