@@ -101,7 +101,7 @@ internal static class Program
                 ? send.Value!.TradeResult?.Retcode.ToString()
                 : $"{send.Error!.Operation}: {send.Error.Message}");
 
-            // Deal history over the native channel (5.1.0). Reading a large closed
+            // Deal history over the native channel (5.1.1). Reading a large closed
             // history with GetDealsAsync builds one oversized response that
             // terminates the server; StreamDealsAsync delivers it in bounded chunks.
             await ReadDealHistoryAsync(client);

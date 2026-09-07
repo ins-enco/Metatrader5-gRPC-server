@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GetDeals`, `DealsResponse` and `Deal` are untouched. `0.4.0` is the first
   version whose contract contains `StreamDeals`, so it is the checkable floor for
   clients that need it.
-- `MetaTrader.Grpc.Client` `5.1.0` exposes the RPC as `StreamDealsAsync` plus a
+- `MetaTrader.Grpc.Client` `5.1.1` exposes the RPC as `StreamDealsAsync` plus a
   whole-history convenience wrapper `GetAllDealsAsync`, and narrows its tested
   server range to `[0.4.0,1.0.0)`. Neither operation falls back to the other: on a
   pre-`0.4.0` server the call fails as `Unimplemented` rather than silently

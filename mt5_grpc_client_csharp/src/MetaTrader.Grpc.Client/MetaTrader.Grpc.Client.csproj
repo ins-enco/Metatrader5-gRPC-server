@@ -5,7 +5,7 @@
     <AssemblyName>MetaTrader.Grpc.Client</AssemblyName>
     <RootNamespace>MetaTrader.Grpc.Client</RootNamespace>
     <PackageId>MetaTrader.Grpc.Client</PackageId>
-    <Version>5.1.0</Version>
+    <Version>5.1.1</Version>
     <Authors>MetaTrader gRPC</Authors>
     <Company>MetaTrader gRPC</Company>
     <Description>C# client library for the MetaTrader 5 gRPC server contracts.</Description>
@@ -19,7 +19,7 @@
     <ProtoContractIdentity>protos-007-stream-deals</ProtoContractIdentity>
     <TestedServerVersionRange>[0.4.0,1.0.0)</TestedServerVersionRange>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>5.1.0: adds StreamDealsAsync, an IAsyncEnumerable&lt;DealsResponse&gt; over the server-streaming TradeHistoryService.StreamDeals RPC that reads a deal history as bounded chunks, and GetAllDealsAsync, a whole-history convenience wrapper returning the same Task&lt;Mt5GrpcResult&lt;DealsResponse&gt;&gt; as GetDealsAsync so migration is a rename. GetDealsAsync is unchanged apart from documentation; neither operation falls back to the other, so a pre-0.4.0 server fails StreamDeals as Unimplemented rather than reverting to the single oversized response that terminates the server. Chunk size is server policy (chunk_size unset defaults to 500, values above the cap are clamped to 1000); the client transmits the caller's value verbatim and supplies none of its own. Prefer the default: a chunk at the 1000 cap is roughly 77 KB, inside the band where aborts were observed. Requires a server at 0.4.0 or later. Additive release: no proto, generated-binding, server-behavior, target-framework or dependency change. Proto contract identity: protos-007-stream-deals. Tested server range: [0.4.0,1.0.0).</PackageReleaseNotes>
+    <PackageReleaseNotes>5.1.1: first published release of the deal-history streaming surface - 5.1.0 was tagged but never reached the registry, so nothing consumed it. Adds StreamDealsAsync, an IAsyncEnumerable&lt;DealsResponse&gt; over the server-streaming TradeHistoryService.StreamDeals RPC that reads a deal history as bounded chunks, and GetAllDealsAsync, a whole-history convenience wrapper returning the same Task&lt;Mt5GrpcResult&lt;DealsResponse&gt;&gt; as GetDealsAsync so migration is a rename. GetDealsAsync is unchanged apart from documentation; neither operation falls back to the other, so a pre-0.4.0 server fails StreamDeals as Unimplemented rather than reverting to the single oversized response that terminates the server. Chunk size is server policy (chunk_size unset defaults to 500, values above the cap are clamped to 1000); the client transmits the caller's value verbatim and supplies none of its own. Prefer the default: a chunk at the 1000 cap is roughly 77 KB, inside the band where aborts were observed. Requires a server at 0.4.0 or later. Additive release: no proto, generated-binding, server-behavior, target-framework or dependency change. Proto contract identity: protos-007-stream-deals. Tested server range: [0.4.0,1.0.0).</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>

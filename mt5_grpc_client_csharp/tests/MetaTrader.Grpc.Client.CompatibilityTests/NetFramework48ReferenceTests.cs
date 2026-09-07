@@ -124,7 +124,7 @@ namespace MetaTrader.Grpc.Client.CompatibilityTests
             Assert.Equal(6, Enum.GetValues(typeof(MultipleCloseByStatus)).Length);
         }
 
-        // --- 5.1.0 deal-history surface (contract E1, E3; US2-AC2, FR-009) -----
+        // --- 5.1.1 deal-history surface (contract E1, E3; US2-AC2, FR-009) -----
         // A .NET Framework 4.8 host consumes the net472 asset, whose surface must
         // carry both new methods. IAsyncEnumerable resolves there from the
         // already-shipped Microsoft.Bcl.AsyncInterfaces, so no extra package

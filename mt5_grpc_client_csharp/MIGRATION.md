@@ -120,7 +120,7 @@ an unset action silently defaulted to `0`.
 
 ---
 
-# Migration Guide: `GetDealsAsync` → `GetAllDealsAsync` / `StreamDealsAsync` (5.1.0)
+# Migration Guide: `GetDealsAsync` → `GetAllDealsAsync` / `StreamDealsAsync` (5.1.1)
 
 `GetDealsAsync` asks the server for the whole filtered deal history in **one**
 message. On a large history that message is big enough to abort the server: 1571

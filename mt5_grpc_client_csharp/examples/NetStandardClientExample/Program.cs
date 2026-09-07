@@ -129,7 +129,7 @@ internal static class Program
             PriceClose = 1.0800,
         });
 
-        // Deal history: backfill once, then fetch incrementally (5.1.0).
+        // Deal history: backfill once, then fetch incrementally (5.1.1).
         await RunDealHistoryExampleAsync(client);
 
         // These calls submit real trade operations. Set the opt-in flag only on

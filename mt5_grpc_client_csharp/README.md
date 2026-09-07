@@ -6,10 +6,10 @@ clients for advanced callers and a thin wrapper that returns typed
 `Mt5GrpcResult<T>` values for convenience calls.
 
 Package metadata uses independent client SemVer. The current package version is
-`5.1.0`, with proto contract identity `protos-007-stream-deals` and a
+`5.1.1`, with proto contract identity `protos-007-stream-deals` and a
 tested server range of `[0.4.0,1.0.0)`.
 
-> **5.1.0 (additive)**: adds `StreamDealsAsync` and `GetAllDealsAsync` over the new
+> **5.1.1 (additive)**: adds `StreamDealsAsync` and `GetAllDealsAsync` over the new
 > server-streaming `TradeHistoryService.StreamDeals` RPC, so a large deal history
 > can be read without the single oversized response that terminates the server.
 > See [Deal history](#deal-history). `GetDealsAsync` is unchanged apart from
@@ -88,11 +88,11 @@ and `Grpc.Tools` never enters your project. Then use the client as shown in
 
 ### Stable vs. pre-release versions
 
-Production versions use plain SemVer (`5.1.0`). Pre-release builds carry a SemVer
-pre-release suffix (for example `5.1.0-preview.1`). NuGet **excludes pre-release
+Production versions use plain SemVer (`5.1.1`). Pre-release builds carry a SemVer
+pre-release suffix (for example `5.1.1-preview.1`). NuGet **excludes pre-release
 versions by default**, so a normal restore only picks stable versions; opt in
 explicitly (e.g. `dotnet add package MetaTrader.Grpc.Client --prerelease`, or a
-floating `5.1.0-*` version) to consume a pre-release.
+floating `5.1.1-*` version) to consume a pre-release.
 
 ### If restore fails
 
@@ -542,8 +542,8 @@ built-in `GITHUB_TOKEN`).
 3. **Tag and push** — the tag version must equal `<Version>`:
 
    ```powershell
-   git tag v5.1.0
-   git push origin v5.1.0
+   git tag v5.1.1
+   git push origin v5.1.1
    ```
 
 The [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)
@@ -561,10 +561,11 @@ version.
 > them at a time:
 >
 > - `v0.4.0` (a server/proto release) also starts this workflow, whose tag guard
->   compares `0.4.0` against `<Version>` `5.1.0` and fails the job. Nothing is
+>   compares `0.4.0` against `<Version>` `5.1.1` and fails the job. Nothing is
 >   published, and the failed run is expected rather than a problem to fix.
-> - `v5.1.0` (a client release) also starts the Docker release, which pushes
->   `mt5-grpc-server:5.1.0` — a server image numbered after the client.
+> - `v5.1.1` (a client release) also starts the Docker release, which pushes
+>   `mt5-grpc-server:5.1.1` — a server image numbered after the client. This has
+>   already happened once: `mt5-grpc-server:5.1.0` exists and holds a `0.4.0` server.
 >
 > Check which artifact a tag is for before pushing it.
 

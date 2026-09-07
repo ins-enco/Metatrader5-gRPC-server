@@ -1,6 +1,10 @@
 # Changelog
 
-## 5.1.0
+## 5.1.1
+
+First published release of the deal-history streaming surface. `5.1.0` carried the
+same surface and was tagged, but its publish was rejected by the registry and no
+`5.1.0` package exists; everything below shipped as `5.1.1`.
 
 ### Added
 

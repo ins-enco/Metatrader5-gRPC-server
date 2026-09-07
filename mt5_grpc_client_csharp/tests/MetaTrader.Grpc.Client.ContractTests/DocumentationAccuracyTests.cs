@@ -127,7 +127,7 @@ namespace MetaTrader.Grpc.Client.ContractTests
             Assert.Contains("retry", program, StringComparison.OrdinalIgnoreCase);
         }
 
-        // --- 5.1.0 deal history: documentation contract H (FR-011, US4-AC1/AC3) --
+        // --- 5.1.1 deal history: documentation contract H (FR-011, US4-AC1/AC3) --
 
         [Fact]
         public void Readme_documents_both_deal_history_surfaces_and_their_costs()
