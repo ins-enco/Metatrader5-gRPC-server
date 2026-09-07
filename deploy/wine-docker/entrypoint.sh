@@ -4,6 +4,15 @@ set -euo pipefail
 display="${DISPLAY:-:99}"
 screen="${XVFB_SCREEN:-1024x768x16}"
 
+# A container restart (docker restart, or restart: unless-stopped kicking in
+# after the process exits) reuses the container filesystem, so the lock and
+# socket from the previous run are still in /tmp and Xvfb aborts with
+#   Fatal server error: Server is already active for display N
+# Nothing else can hold them - this is our own container - so clear them first.
+display_num="${display#:}"
+display_num="${display_num%%.*}"
+rm -f "/tmp/.X${display_num}-lock" "/tmp/.X11-unix/X${display_num}"
+
 Xvfb "${display}" -screen 0 "${screen}" >/tmp/xvfb.log 2>&1 &
 xvfb_pid="$!"
 
