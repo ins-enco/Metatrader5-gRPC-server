@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package metatrader.v1;
+
+import "common.proto";
+
+// Service definition for dealing with trade history
+service TradeHistoryService {
+  // Get deals from trading history within specified parameters
+  rpc GetDeals(DealsRequest) returns (DealsResponse);
+
+  // Same filters as GetDeals, but the result is delivered as a stream of
+  // bounded chunks instead of a single message. Use this for large
+  // histories: one response carrying a few thousand deals is big enough to
+  // hit a partial socket write, which grpcio aborts on under Wine.
+  rpc StreamDeals(DealsRequest) returns (stream DealsResponse);
+}
+
+// Request message for retrieving deals
+message DealsRequest {
+  oneof filter {
+    TimeFilter time_filter = 1;
+    uint64 ticket = 2;      // Filter by order ticket
+    uint64 position = 3;    // Filter by position ticket
+  }
+  optional string group = 4;         // Optional symbol group filter
+  // StreamDeals only: deals per streamed message. Defaults to 500, capped
+  // at 1000. Ignored by GetDeals.
+  optional uint32 chunk_size = 5;
+}
+
+// Response containing a list of deals
+message DealsResponse {
+  repeated Deal deals = 1;
+  optional Error error = 2;
+}
+
+// Represents a single trade deal
+message Deal {
+  uint64 ticket = 1;        // Deal ticket
+  uint64 order = 2;         // Order ticket
+  int64 time = 3;          // Unix timestamp in seconds
+  int64 time_msc = 4;      // Time in milliseconds since epoch
+  int32 type = 5;          // Deal type
+  int32 entry = 6;         // Entry type
+  uint32 magic = 7;        // Magic number
+  uint64 position_id = 8;   // Position identifier
+  int32 reason = 9;        // Deal reason
+  double volume = 10;      // Deal volume
+  double price = 11;       // Deal price
+  double commission = 12;   // Commission
+  double swap = 13;        // Swap
+  double profit = 14;      // Profit
+  double fee = 15;         // Fee
+  string symbol = 16;      // Symbol name
+  string comment = 17;     // Comment
+  string external_id = 18; // External ID
+}
