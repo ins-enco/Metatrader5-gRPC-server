@@ -535,17 +535,31 @@ built-in `GITHUB_TOKEN`).
 3. **Tag and push** — the tag version must equal `<Version>`:
 
    ```powershell
-   git tag csharp-client-v5.1.0
-   git push origin csharp-client-v5.1.0
+   git tag v5.1.0
+   git push origin v5.1.0
    ```
 
-The client-scoped [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)
-workflow (tags `csharp-client-v*`) then builds, tests, runs the drift and metadata
+The [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)
+workflow (tags `v*.*.*`) then builds, tests, runs the drift and metadata
 gates, checks the tag matches `<Version>`, packs deterministically
 (`ContinuousIntegrationBuild=true`), and pushes to GitHub Packages with
 `GITHUB_TOKEN`. Publishing a version that already exists is rejected (HTTP 409) and
 fails the job — published versions are immutable; ship a correction as a new
-version. This client tag is independent of the server's `v*.*.*` Docker release.
+version.
+
+> **The `v*.*.*` tag namespace is shared with the server's Docker release**
+> ([`docker-ghcr.yml`](../.github/workflows/docker-ghcr.yml)): one `v<X.Y.Z>` tag
+> fires both workflows. The two artifacts version independently — the server and
+> proto packages are on `0.x`, this client on `5.x` — so a tag matches only one of
+> them at a time:
+>
+> - `v0.4.0` (a server/proto release) also starts this workflow, whose tag guard
+>   compares `0.4.0` against `<Version>` `5.1.0` and fails the job. Nothing is
+>   published, and the failed run is expected rather than a problem to fix.
+> - `v5.1.0` (a client release) also starts the Docker release, which pushes
+>   `mt5-grpc-server:5.1.0` — a server image numbered after the client.
+>
+> Check which artifact a tag is for before pushing it.
 
 ## Drift Check
 
