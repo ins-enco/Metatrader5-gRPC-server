@@ -101,12 +101,99 @@ internal static class Program
                 ? send.Value!.TradeResult?.Retcode.ToString()
                 : $"{send.Error!.Operation}: {send.Error.Message}");
 
+            // Deal history over the native channel (5.1.0). Reading a large closed
+            // history with GetDealsAsync builds one oversized response that
+            // terminates the server; StreamDealsAsync delivers it in bounded chunks.
+            await ReadDealHistoryAsync(client);
+
             // Opt in only on a test account: these examples submit real trades.
             if (Environment.GetEnvironmentVariable("RUN_TRADE_LIFECYCLE_EXAMPLES") == "1")
             {
                 await RunTradeLifecycleExamplesAsync(client);
             }
         }
+    }
+
+    private static async Task ReadDealHistoryAsync(Mt5GrpcClient client)
+    {
+        // Everything here runs over the native Grpc.Core channel from CreateCore,
+        // which is the transport .NET Framework 4.8 / Windows 10 has to use. The
+        // surface and the semantics are identical to the modern GrpcChannel path,
+        // IAsyncEnumerable included -- it resolves from Microsoft.Bcl.AsyncInterfaces,
+        // which already ships with the package, so no extra reference is needed.
+        //
+        // The closed deal history only grows at the newest end, so read it once in
+        // full and then ask only for what is new. Re-reading it every cycle is what
+        // makes a large account expensive to poll -- and with GetDealsAsync it
+        // builds one oversized response that terminates the server, which is why
+        // StreamDealsAsync exists.
+        //
+        // Chunk size is the server's policy, not the client's: chunk_size unset
+        // means 500 deals per message, and any larger value is capped at 1000. This
+        // client transmits whatever you set, verbatim. Prefer leaving it unset -- a
+        // chunk at the 1000 cap is roughly 77 KB, back inside the size band where
+        // the server was seen to abort.
+
+        // 1. Backfill: one pass over the whole history, one chunk held at a time.
+        var backfill = new DealsRequest
+        {
+            TimeFilter = new TimeFilter { DateFrom = 0, DateTo = 0 },
+        };
+
+        var backfilled = 0;
+        long anchorMsc = 0;
+
+        await foreach (var chunk in client.StreamDealsAsync(backfill))
+        {
+            backfilled += chunk.Deals.Count;
+            foreach (var deal in chunk.Deals)
+            {
+                if (deal.TimeMsc > anchorMsc)
+                {
+                    anchorMsc = deal.TimeMsc;
+                }
+            }
+        }
+
+        Console.WriteLine($"backfilled {backfilled} deals; anchor time_msc = {anchorMsc}");
+
+        // 2. Incremental: anchor date_from on the newest deal already held. With no
+        // new activity this transfers nothing. date_from is inclusive, so the
+        // anchor deal itself may come back -- de-duplicate on Ticket.
+        var incremental = new DealsRequest
+        {
+            TimeFilter = new TimeFilter
+            {
+                DateFrom = anchorMsc / 1000,   // time_msc is milliseconds; date_from is seconds
+                DateTo = 0,
+            },
+        };
+
+        var fresh = 0;
+        await foreach (var chunk in client.StreamDealsAsync(incremental))
+        {
+            foreach (var deal in chunk.Deals)
+            {
+                if (deal.TimeMsc > anchorMsc)
+                {
+                    fresh++;
+                    anchorMsc = deal.TimeMsc;
+                }
+            }
+        }
+
+        Console.WriteLine($"incremental fetch: {fresh} new deals since the anchor");
+
+        // 3. When the whole history genuinely has to be in memory at once -- a
+        // reconciliation pass, a report -- GetAllDealsAsync is the drop-in for
+        // GetDealsAsync: same result type, but it reads in chunks underneath. The
+        // cost is unbounded client memory, growing with the deal count, so prefer
+        // StreamDealsAsync for a large history. Failures come back on the result
+        // rather than thrown, and never with a partial collection.
+        var all = await client.GetAllDealsAsync(backfill);
+        Console.WriteLine(all.IsSuccess
+            ? $"GetAllDealsAsync materialised {all.Value!.Deals.Count} deals"
+            : $"{all.Error!.Operation}: {all.Error.Message}");
     }
 
     private static async Task RunTradeLifecycleExamplesAsync(Mt5GrpcClient client)

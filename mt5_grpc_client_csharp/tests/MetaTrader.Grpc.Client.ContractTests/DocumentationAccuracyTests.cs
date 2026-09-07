@@ -127,6 +127,62 @@ namespace MetaTrader.Grpc.Client.ContractTests
             Assert.Contains("retry", program, StringComparison.OrdinalIgnoreCase);
         }
 
+        // --- 5.1.0 deal history: documentation contract H (FR-011, US4-AC1/AC3) --
+
+        [Fact]
+        public void Readme_documents_both_deal_history_surfaces_and_their_costs()
+        {
+            var readme = File.ReadAllText(Path.Combine(RepoClientRoot(), "README.md"));
+
+            // H1: both surfaces, named.
+            Assert.Contains("StreamDealsAsync", readme);
+            Assert.Contains("GetAllDealsAsync", readme);
+
+            // H1: backfill-then-incremental, anchored on the last held deal.
+            Assert.Contains("backfill", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("incremental", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("date_from", readme, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("anchor", readme, StringComparison.OrdinalIgnoreCase);
+
+            // H2: the unbounded client memory cost of the convenience surface.
+            Assert.Contains("unbounded", readme, StringComparison.OrdinalIgnoreCase);
+
+            // H3: the server owns the default and the cap, and the cap is risky.
+            Assert.Contains("chunk_size", readme);
+            Assert.Contains("500", readme);
+            Assert.Contains("1000", readme);
+            Assert.Contains("77 KB", readme);
+
+            // H4: the large-history failure mode of GetDealsAsync.
+            Assert.Contains("terminates the server", readme, StringComparison.OrdinalIgnoreCase);
+
+            // H5: a pre-0.4.0 server fails as unimplemented, with no fallback.
+            Assert.Contains("Unimplemented", readme);
+            Assert.Contains("no automatic fallback", readme, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData("NetStandardClientExample")]
+        [InlineData("NetFramework48ClientExample")]
+        public void Runnable_examples_demonstrate_backfill_then_incremental_deal_reads(string project)
+        {
+            var program = File.ReadAllText(Path.Combine(RepoClientRoot(), "examples", project, "Program.cs"));
+
+            // A backfill pass through the chunk-level surface...
+            Assert.Contains("StreamDealsAsync", program);
+            // ...then an incremental fetch anchored on the last held deal.
+            Assert.Contains("DateFrom", program);
+            Assert.Contains("TimeMsc", program);
+            Assert.Contains("incremental", program, StringComparison.OrdinalIgnoreCase);
+
+            // The guidance comments the documentation contract requires at the
+            // point of use: the server's chunk policy and when to prefer which
+            // surface.
+            Assert.Contains("500", program);
+            Assert.Contains("1000", program);
+            Assert.Contains("GetAllDealsAsync", program);
+        }
+
         private static string MigrationGuidePath()
         {
             return Path.Combine(RepoClientRoot(), "MIGRATION.md");

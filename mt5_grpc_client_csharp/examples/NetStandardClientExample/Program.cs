@@ -129,12 +129,91 @@ internal static class Program
             PriceClose = 1.0800,
         });
 
+        // Deal history: backfill once, then fetch incrementally (5.1.0).
+        await RunDealHistoryExampleAsync(client);
+
         // These calls submit real trade operations. Set the opt-in flag only on
         // a test account after replacing the example tickets/prices as needed.
         if (Environment.GetEnvironmentVariable("RUN_TRADE_LIFECYCLE_EXAMPLES") == "1")
         {
             await RunTradeLifecycleExamplesAsync(client, symbol);
         }
+    }
+
+    private static async Task RunDealHistoryExampleAsync(Mt5GrpcClient client)
+    {
+        // The closed deal history only ever grows at the newest end, so read it
+        // once in full and then ask only for what is new. Re-reading the whole
+        // history every cycle is what makes a large account expensive to poll --
+        // and with GetDealsAsync it builds one oversized response that terminates
+        // the server, which is why StreamDealsAsync exists.
+        //
+        // Chunk size is the server's policy, not the client's: chunk_size unset
+        // means 500 deals per message, and any larger value is capped at 1000.
+        // This client transmits whatever you set, verbatim. Prefer leaving it
+        // unset -- a chunk at the 1000 cap is roughly 77 KB, back inside the size
+        // band where the server was seen to abort.
+
+        // 1. Backfill: one pass over the whole history, one chunk held at a time.
+        var backfill = new DealsRequest
+        {
+            TimeFilter = new TimeFilter { DateFrom = 0, DateTo = 0 },
+        };
+
+        var backfilled = 0;
+        long anchorMsc = 0;
+
+        await foreach (var chunk in client.StreamDealsAsync(backfill))
+        {
+            backfilled += chunk.Deals.Count;
+            foreach (var deal in chunk.Deals)
+            {
+                if (deal.TimeMsc > anchorMsc)
+                {
+                    anchorMsc = deal.TimeMsc;
+                }
+            }
+        }
+
+        Console.WriteLine($"backfilled {backfilled} deals; anchor time_msc = {anchorMsc}");
+
+        // 2. Incremental: anchor date_from on the newest deal already held. With
+        // no new activity this transfers nothing. date_from is inclusive, so the
+        // anchor deal itself may come back -- de-duplicate on Ticket.
+        var incremental = new DealsRequest
+        {
+            TimeFilter = new TimeFilter
+            {
+                DateFrom = anchorMsc / 1000,   // time_msc is milliseconds; date_from is seconds
+                DateTo = 0,
+            },
+        };
+
+        var fresh = 0;
+        await foreach (var chunk in client.StreamDealsAsync(incremental))
+        {
+            foreach (var deal in chunk.Deals)
+            {
+                if (deal.TimeMsc > anchorMsc)
+                {
+                    fresh++;
+                    anchorMsc = deal.TimeMsc;
+                }
+            }
+        }
+
+        Console.WriteLine($"incremental fetch: {fresh} new deals since the anchor");
+
+        // 3. When the whole history genuinely has to be in memory at once -- a
+        // reconciliation pass, a report -- GetAllDealsAsync is the drop-in for
+        // GetDealsAsync: same result type, but it reads in chunks underneath.
+        // The cost is unbounded client memory, growing with the deal count, so
+        // prefer StreamDealsAsync for a large history. Failures come back on the
+        // result rather than thrown, and never with a partial collection.
+        var all = await client.GetAllDealsAsync(backfill);
+        Console.WriteLine(all.IsSuccess
+            ? $"GetAllDealsAsync materialised {all.Value!.Deals.Count} deals"
+            : $"{all.Error!.Operation}: {all.Error.Message}");
     }
 
     private static async Task RunTradeLifecycleExamplesAsync(Mt5GrpcClient client, string symbol)

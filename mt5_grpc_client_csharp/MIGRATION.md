@@ -117,3 +117,85 @@ Leaving `Action` unset is `TradeActionUnspecified` (0), which MT5 does not defin
 The server rejects it with a structured error and places no order — always set an
 explicit action. This is stricter (and safer) than the prior `int` field, where
 an unset action silently defaulted to `0`.
+
+---
+
+# Migration Guide: `GetDealsAsync` → `GetAllDealsAsync` / `StreamDealsAsync` (5.1.0)
+
+`GetDealsAsync` asks the server for the whole filtered deal history in **one**
+message. On a large history that message is big enough to abort the server: 1571
+deals measured at ~121 KB terminated it every time (the write fails inside grpcio's
+Windows IOCP endpoint, exit `c0000409`) and a container with
+`restart: unless-stopped` went into a restart loop. 982 deals (~75 KB) were never
+seen to fail.
+
+**Nothing about `GetDealsAsync` changed** — same signature, same behaviour, no
+fallback added — so this migration is optional and can be done per call site. It is
+worth doing for any call whose history can grow.
+
+## Which replacement
+
+| Your call site | Use | Why |
+|---|---|---|
+| Needs the full collection in memory (reconciliation, a report) | `GetAllDealsAsync` | One-token rename; identical result type |
+| Processes deals as they arrive, or the history is large/unbounded | `StreamDealsAsync` | Holds one chunk at a time |
+
+## `GetAllDealsAsync` — a one-token rename
+
+The return type is **identical** to `GetDealsAsync`'s
+(`Task<Mt5GrpcResult<DealsResponse>>`), so `IsSuccess`, `Error` and `Value.Deals`
+all keep working and no response-handling code changes:
+
+```csharp
+// Before
+var result = await client.GetDealsAsync(request);
+
+// After — reads in bounded chunks underneath
+var result = await client.GetAllDealsAsync(request);
+
+if (result.IsSuccess) Console.WriteLine($"{result.Value!.Deals.Count} deals");
+else Console.WriteLine($"{result.Error!.Operation}: {result.Error.Message}");
+```
+
+Two behaviours to know, neither of which breaks existing control flow:
+
+- **Client memory is unbounded** — it retains every deal for the life of the call,
+  exactly as `GetDealsAsync` did. This fixes the *server* failure, not the client
+  cost. For a large history prefer `StreamDealsAsync`.
+- **No partial collection on failure.** A failure returns `IsSuccess == false` with
+  `Value` null, even when chunks arrived before the fault. `GetDealsAsync` had no
+  partial state to expose, so this matches what callers already assume — and it
+  means a truncated read can never be mistaken for a complete one.
+
+## `StreamDealsAsync` — the chunk-level surface
+
+```csharp
+// Before
+var result = await client.GetDealsAsync(request);
+if (result.IsSuccess)
+    foreach (var deal in result.Value!.Deals) Store(deal);
+
+// After
+await foreach (var chunk in client.StreamDealsAsync(request))
+    foreach (var deal in chunk.Deals) Store(deal);
+```
+
+Note the error model differs here, and this is the one place a migrating caller
+must change more than a name: `StreamDealsAsync` **throws**
+`Mt5GrpcClientException` (with the mapped error on `.Error`) instead of returning a
+failure result, because an `IAsyncEnumerable` has nowhere to put a result object.
+Wrap the loop in `try`/`catch` where you previously checked `result.IsSuccess`. If
+you would rather keep the returned-failure model, use `GetAllDealsAsync`.
+
+## Server floor
+
+Both new methods need a server at **`0.4.0` or later** — `StreamDeals` does not
+exist before it. An older server fails the call with gRPC status `Unimplemented`,
+and there is **no automatic fallback** to `GetDeals`: falling back would send the
+oversized single response that terminates the server, turning a clear error into an
+outage. `GetDealsAsync` continues to work against any supported server.
+
+Chunk size is server policy: `chunk_size` unset means 500 deals per message and a
+larger value is capped at 1000. The client transmits your value verbatim. Prefer
+leaving it unset — a chunk at the 1000 cap is ~77 KB, back inside the band where
+aborts were observed.

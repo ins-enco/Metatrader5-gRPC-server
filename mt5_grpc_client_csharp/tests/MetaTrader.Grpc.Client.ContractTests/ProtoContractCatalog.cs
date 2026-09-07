@@ -27,10 +27,13 @@ namespace MetaTrader.Grpc.Client.ContractTests
 
         // Server-streaming services (the first is TradeEventsService). Kept separate
         // from UnaryServices so the unary contract counts remain unchanged (SC-005).
+        // TradeHistoryService appears in both maps: GetDeals stays unary above and
+        // StreamDeals is the streaming addition in 0.4.0 / client 5.1.0.
         public static IReadOnlyDictionary<string, string[]> StreamingServices { get; } =
             new Dictionary<string, string[]>
             {
-                ["TradeEventsService"] = new[] { "SubscribeTradeTransactions" }
+                ["TradeEventsService"] = new[] { "SubscribeTradeTransactions" },
+                ["TradeHistoryService"] = new[] { "StreamDeals" }
             };
     }
 }

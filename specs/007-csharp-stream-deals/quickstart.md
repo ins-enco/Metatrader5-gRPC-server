@@ -158,17 +158,31 @@ Then, in order:
 
 ## Definition of done
 
-- [ ] Scenarios 1–4 pass with no pre-existing test, example or benchmark modified to
-      accommodate the change (SC-005).
-- [ ] `StreamDealsAsync` and `GetAllDealsAsync` satisfy every guarantee in
+- [X] Scenarios 1–4 pass with no pre-existing test, example or benchmark modified to
+      accommodate the change (SC-005). 250 C# tests + 48 pytest, all green; the diff to
+      existing test files is additive only (`+55/-0`, `+56/-0`, and `+4/-1` in
+      `ProtoContractCatalog` where a trailing comma was added).
+- [X] `StreamDealsAsync` and `GetAllDealsAsync` satisfy every guarantee in
       [contracts/client-surface.md](./contracts/client-surface.md) sections B, C, D.
-- [ ] `GetDealsAsync` is byte-for-byte unchanged apart from XML documentation (section A).
-- [ ] Parity matrix green for all three filter forms with `group` set and unset.
-- [ ] `ProtoContractCatalog.StreamingServices` includes `TradeHistoryService`/`StreamDeals`
-      and `UnaryServices` is unchanged (F3).
-- [ ] Version and compatibility metadata bumped, quoted verbatim, both guards green
-      (G1, G2, SC-010).
-- [ ] Python packages released at `0.4.0` with a root changelog entry, and the server RPC
-      covered by `mt5_grpc_server/tests/test_deals_history_stream.py` (research Decision 7).
-- [ ] Scenario 5 recorded, or explicitly documented as not run and why (the constitution
-      requires unrun checks to be stated).
+- [X] `GetDealsAsync` is byte-for-byte unchanged apart from XML documentation (section A).
+      `git diff` on `Mt5GrpcClient.Trading.cs` shows zero removed lines.
+- [X] Parity matrix green for all three filter forms with `group` set and unset — 6 cases
+      for the streamed concatenation and 6 for `GetAllDealsAsync`, plus a guard test
+      asserting the `group` filter actually narrows the result so the matrix is not vacuous.
+- [X] `ProtoContractCatalog.StreamingServices` includes `TradeHistoryService`/`StreamDeals`
+      and `UnaryServices` is unchanged (F3) — `GeneratedSurfaceTests` still asserts
+      16 services / 31 unary RPCs and its file is untouched.
+- [X] Version and compatibility metadata bumped, quoted verbatim, both guards green
+      (G1, G2, SC-010). `check-package-metadata.ps1` reports
+      `protos-007-stream-deals` and `[0.4.0,1.0.0)` in README + releaseNotes, and an
+      unchanged per-target dependency set.
+- [~] Python packages **set to** `0.4.0` with a root changelog entry, and the server RPC
+      covered by `mt5_grpc_server/tests/test_deals_history_stream.py` (research Decision 7,
+      23 tests). **Not yet released** — see the publish gate below.
+- [ ] **Scenario 5 NOT RUN — documented in [tasks.md](./tasks.md).** Needs a live
+      `0.4.0`+ server, an account with 1600+ closed deals, and a Windows 10 / .NET
+      Framework 4.8 host, none of which were available. SC-001, SC-006, SC-007 and SC-008
+      remain unverified against real transport; run it before release.
+- [ ] **Publish gate (G4) CLOSED.** No `0.4.0` `mt5_grpc_proto` / `mt5_grpc_server`
+      release exists yet, so the client `5.1.0` publish must not proceed. All client-side
+      verification above is complete and need not be repeated.

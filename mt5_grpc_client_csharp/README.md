@@ -6,8 +6,16 @@ clients for advanced callers and a thin wrapper that returns typed
 `Mt5GrpcResult<T>` values for convenience calls.
 
 Package metadata uses independent client SemVer. The current package version is
-`5.0.0`, with proto contract identity `protos-005-trade-transaction-events` and a
-tested server range of `[0.3.0,1.0.0)`.
+`5.1.0`, with proto contract identity `protos-007-stream-deals` and a
+tested server range of `[0.4.0,1.0.0)`.
+
+> **5.1.0 (additive)**: adds `StreamDealsAsync` and `GetAllDealsAsync` over the new
+> server-streaming `TradeHistoryService.StreamDeals` RPC, so a large deal history
+> can be read without the single oversized response that terminates the server.
+> See [Deal history](#deal-history). `GetDealsAsync` is unchanged apart from
+> documentation, and no dependency or target framework changed. **Requires a server
+> at `0.4.0` or later** — an older server fails the call as `Unimplemented`, with no
+> automatic fallback.
 
 > **5.0.0 (additive)**: adds six intent-focused trade lifecycle methods for
 > opening, ticket-only position closing and pending-order cancellation,
@@ -80,11 +88,11 @@ and `Grpc.Tools` never enters your project. Then use the client as shown in
 
 ### Stable vs. pre-release versions
 
-Production versions use plain SemVer (`5.0.0`). Pre-release builds carry a SemVer
-pre-release suffix (for example `0.3.0-preview.1`). NuGet **excludes pre-release
+Production versions use plain SemVer (`5.1.0`). Pre-release builds carry a SemVer
+pre-release suffix (for example `5.1.0-preview.1`). NuGet **excludes pre-release
 versions by default**, so a normal restore only picks stable versions; opt in
 explicitly (e.g. `dotnet add package MetaTrader.Grpc.Client --prerelease`, or a
-floating `0.3.0-*` version) to consume a pre-release.
+floating `5.1.0-*` version) to consume a pre-release.
 
 ### If restore fails
 
@@ -392,6 +400,115 @@ no duplicate.
 gRPC uses the package's native `Grpc.Core` transport. Server-streaming support
 still depends on the Windows host and is not guaranteed on all .NET Framework deployments.
 
+## Deal history
+
+Reading the closed deal history has two surfaces. `TradeHistoryService.StreamDeals`
+(added in server `0.4.0`) delivers the filtered history as a stream of bounded
+chunks, and the client exposes it two ways:
+
+| Method | Returns | Client memory |
+| --- | --- | --- |
+| `StreamDealsAsync` | `IAsyncEnumerable<DealsResponse>` — one item per server message | one chunk at a time |
+| `GetAllDealsAsync` | `Task<Mt5GrpcResult<DealsResponse>>` — the ordered concatenation | the whole history |
+| `GetDealsAsync` | `Task<Mt5GrpcResult<DealsResponse>>` — one single response | the whole history |
+
+**`GetDealsAsync` has a large-history failure mode.** It asks the server for the
+entire history in one message. Measured against a live account, 1571 deals
+serialise to about 121 KB, and a response that size **terminates the server**: the
+write aborts inside grpcio's Windows IOCP endpoint (`windows_endpoint.cc`, exit
+`c0000409`) and a container with `restart: unless-stopped` goes into a restart
+loop. 982 deals (~75 KB) were never seen to fail. `GetDealsAsync` is unchanged and
+still fine for a small or tightly filtered history, but **for anything large use
+`StreamDealsAsync`** — or `GetAllDealsAsync`, which reads in chunks underneath and
+hands back the same result type.
+
+### Backfill once, then fetch incrementally
+
+The closed history only ever grows at the newest end, so re-reading all of it every
+cycle is wasted transfer — and the habit that triggers the failure above. Read it
+once, keep the newest `time_msc` you hold as an **anchor**, then fetch only what is
+new by setting `TimeFilter.date_from` to that anchor. With no new activity an
+incremental cycle transfers zero deals.
+
+```csharp
+using var client = Mt5GrpcClientFactory.Create("https://localhost:50051");
+
+// 1. Backfill: the whole history, one bounded chunk at a time.
+var backfill = new DealsRequest { TimeFilter = new TimeFilter { DateFrom = 0, DateTo = 0 } };
+long anchorMsc = 0;
+
+await foreach (var chunk in client.StreamDealsAsync(backfill))
+{
+    foreach (var deal in chunk.Deals)
+    {
+        Store(deal);
+        if (deal.TimeMsc > anchorMsc) anchorMsc = deal.TimeMsc;
+    }
+}
+
+// 2. Incremental: only what arrived after the anchor. date_from is in seconds
+// and is inclusive, so the anchor deal may come back — de-duplicate on Ticket.
+var incremental = new DealsRequest
+{
+    TimeFilter = new TimeFilter { DateFrom = anchorMsc / 1000, DateTo = 0 },
+};
+
+await foreach (var chunk in client.StreamDealsAsync(incremental))
+{
+    foreach (var deal in chunk.Deals)
+    {
+        if (deal.TimeMsc > anchorMsc) { Store(deal); anchorMsc = deal.TimeMsc; }
+    }
+}
+```
+
+The library holds no anchor for you and offers no helper — the anchor lives in your
+own state. Zero chunks is a valid, successful, empty read, never an error.
+
+### One call when memory allows
+
+`GetAllDealsAsync` is a one-token rename away from `GetDealsAsync`: identical
+return type, so `IsSuccess`, `Error` and `Value.Deals` keep working.
+
+```csharp
+var result = await client.GetAllDealsAsync(request);
+if (result.IsSuccess) Console.WriteLine($"{result.Value!.Deals.Count} deals");
+else Console.WriteLine($"{result.Error!.Operation}: {result.Error.Message}");
+```
+
+The trade-off is **unbounded client memory**: it retains every deal for the life of
+the call, so cost grows with the history instead of staying flat. Prefer
+`StreamDealsAsync` for a large history. Failures are returned rather than thrown —
+an in-band MT5 error, a transport fault, cancellation or a deadline all come back as
+`IsSuccess == false` with `Value` null — and **no partial collection is ever
+returned**, so a truncated read can never be mistaken for a complete one. If you
+want to keep partial progress, use `StreamDealsAsync`.
+
+### Chunk size is the server's policy
+
+`DealsRequest.chunk_size` (field 5, `StreamDeals` only — `GetDeals` ignores it) sets
+deals per streamed message. **The server owns the policy**: unset means its default
+of **500**, and any larger value is clamped to its cap of **1000**. The client
+transmits your value verbatim and supplies none of its own — it never sets, raises,
+lowers, clamps, defaults or clears the field, so leaving it unset is what gets you
+the server's default.
+
+> **Prefer the default.** At roughly 77 bytes per deal, a chunk at the 1000 cap is
+> about **77 KB** — back inside the band where aborts were observed (~75 KB
+> survived, ~121 KB did not). Requesting a size at or near the cap gives back the
+> very failure mode this surface exists to avoid.
+
+### Server version
+
+`StreamDeals` requires a server at `0.4.0` or later. An older server fails the call
+with gRPC status `Unimplemented`, and there is **no automatic fallback** to
+`GetDeals` in either direction — a fallback would send exactly the oversized single
+response that terminates the server, turning a clear, actionable error into an
+outage. Check the tested server range in this README's header before deploying.
+
+Both runnable [examples](#examples) demonstrate the full pattern, the `net48` one
+over the native `Grpc.Core` channel via `Mt5GrpcClientFactory.CreateCore`.
+
 ## Publishing a new version (maintainers)
 
 Publishing is automated and tag-triggered — there is no manual publish step and no
@@ -418,8 +535,8 @@ built-in `GITHUB_TOKEN`).
 3. **Tag and push** — the tag version must equal `<Version>`:
 
    ```powershell
-   git tag csharp-client-v5.0.0
-   git push origin csharp-client-v5.0.0
+   git tag csharp-client-v5.1.0
+   git push origin csharp-client-v5.1.0
    ```
 
 The client-scoped [`csharp-client-publish`](../.github/workflows/csharp-client-publish.yml)

@@ -1,6 +1,8 @@
 using System.IO;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -120,6 +122,59 @@ namespace MetaTrader.Grpc.Client.CompatibilityTests
             Assert.Equal(6, Enum.GetValues(typeof(TradeLifecycleOperation)).Length);
             Assert.Equal(5, Enum.GetValues(typeof(TradeExecutionStatus)).Length);
             Assert.Equal(6, Enum.GetValues(typeof(MultipleCloseByStatus)).Length);
+        }
+
+        // --- 5.1.0 deal-history surface (contract E1, E3; US2-AC2, FR-009) -----
+        // A .NET Framework 4.8 host consumes the net472 asset, whose surface must
+        // carry both new methods. IAsyncEnumerable resolves there from the
+        // already-shipped Microsoft.Bcl.AsyncInterfaces, so no extra package
+        // reference is needed - this test project adds none, which is the proof.
+        [Fact]
+        public void NetFramework48_consumers_can_reference_both_deal_history_signatures()
+        {
+            var streamDeals = typeof(Mt5GrpcClient).GetMethod(nameof(Mt5GrpcClient.StreamDealsAsync));
+            Assert.NotNull(streamDeals);
+            Assert.Equal(typeof(IAsyncEnumerable<DealsResponse>), streamDeals!.ReturnType);
+            AssertRequestDeadlineTokenSignature(streamDeals);
+
+            var getAllDeals = typeof(Mt5GrpcClient).GetMethod(nameof(Mt5GrpcClient.GetAllDealsAsync));
+            Assert.NotNull(getAllDeals);
+            Assert.Equal(typeof(Task<Mt5GrpcResult<DealsResponse>>), getAllDeals!.ReturnType);
+            AssertRequestDeadlineTokenSignature(getAllDeals);
+
+            // GetDealsAsync keeps the identical shape, so a caller can rename in
+            // place (contract section A, C).
+            var getDeals = typeof(Mt5GrpcClient).GetMethod(nameof(Mt5GrpcClient.GetDealsAsync));
+            Assert.NotNull(getDeals);
+            Assert.Equal(getDeals!.ReturnType, getAllDeals.ReturnType);
+        }
+
+        [Fact]
+        public void NetFramework48_consumers_can_set_the_chunk_size_field()
+        {
+            // Presence-sensitive and settable from this host with no extra package
+            // reference; unset must stay unset so the server's default applies.
+            var request = new DealsRequest();
+            Assert.False(request.HasChunkSize);
+
+            request.ChunkSize = 500;
+            Assert.True(request.HasChunkSize);
+            Assert.Equal(500u, request.ChunkSize);
+
+            var parsed = DealsRequest.Parser.ParseFrom(request.ToByteArray());
+            Assert.True(parsed.HasChunkSize);
+            Assert.Equal(500u, parsed.ChunkSize);
+
+            request.ClearChunkSize();
+            Assert.False(DealsRequest.Parser.ParseFrom(request.ToByteArray()).HasChunkSize);
+        }
+
+        private static void AssertRequestDeadlineTokenSignature(MethodInfo method)
+        {
+            Assert.Equal(
+                new[] { typeof(DealsRequest), typeof(DateTime?), typeof(CancellationToken) },
+                method.GetParameters().Select(parameter => parameter.ParameterType));
+            Assert.All(method.GetParameters(), parameter => Assert.True(parameter.IsOptional));
         }
     }
 }

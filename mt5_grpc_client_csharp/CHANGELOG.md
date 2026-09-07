@@ -1,5 +1,59 @@
 # Changelog
 
+## 5.1.0
+
+### Added
+
+- Added `StreamDealsAsync`, an `IAsyncEnumerable<DealsResponse>` over the new
+  server-streaming `TradeHistoryService.StreamDeals` RPC. One yielded item per
+  server message, in server order; consume it with `await foreach`. Retention is
+  one chunk at a time, so client memory tracks a chunk rather than the history.
+  Cancellation, an elapsed deadline and abandoning the enumeration early all
+  release the underlying call.
+- Added `GetAllDealsAsync`, which consumes that stream internally and returns the
+  ordered concatenation as one synthesized `DealsResponse`. It returns
+  `Task<Mt5GrpcResult<DealsResponse>>` — the **same type** `GetDealsAsync`
+  returns — so migrating is a one-token rename that leaves `IsSuccess`, `Error`
+  and `Value.Deals` working unchanged. Failures are returned rather than thrown,
+  and no partial collection is ever returned alongside an error.
+- Chunk size is server policy and pass-through only: `chunk_size` (field 5) unset
+  means the server's default of 500, and a larger value is clamped to its cap of
+  1000. The client never sets, raises, lowers, clamps, defaults or clears the
+  field. Prefer the default — a chunk at the 1000 cap is roughly 77 KB, inside the
+  band where server aborts were observed.
+- Added a README "Deal history" section, a `GetAllDealsAsync` migration section in
+  [MIGRATION.md](./MIGRATION.md), and the backfill-then-incremental pattern in
+  both runnable examples (the `net48` one over the native `Grpc.Core` channel).
+- Added no-broker contract coverage for the new surface — multi-chunk
+  concatenation, empty history, in-band error, transport `Unimplemented`,
+  cancellation, deadline, release-on-abandon, verbatim chunk-size transmission
+  including an above-cap value, concurrent streams, bounded logging, and
+  unary/streaming parity across all three filter forms with `group` set and unset.
+
+### Changed
+
+- `GetDealsAsync` gains XML documentation describing its large-history failure
+  mode and pointing to `StreamDealsAsync`. **Its signature and behaviour are
+  unchanged.**
+
+### Compatibility
+
+- Additive release. **Requires a server at `0.4.0` or later**: `StreamDeals` does
+  not exist before it, and an older server fails the call with gRPC status
+  `Unimplemented`. There is **no automatic fallback in either direction** between
+  `StreamDeals` and `GetDeals` — a fallback would send exactly the oversized single
+  response that terminates the server.
+- Proto contract identity moves to `protos-007-stream-deals` and the tested server
+  range to `[0.4.0,1.0.0)`. No `.proto` file, generated binding or server behaviour
+  changed; `GetDeals`, `DealsResponse` and `Deal` are untouched, and no field
+  number was added, reused, renamed or removed.
+- **No new dependency and no target-framework change.** `IAsyncEnumerable` on
+  `netstandard2.0` continues to come from the already-referenced
+  `Microsoft.Bcl.AsyncInterfaces`, so a `net48` or `netstandard2.0` consumer calls
+  both new surfaces with no additional package reference.
+- Every existing caller compiles and passes unmodified — the two examples, all
+  four test projects and the benchmarks.
+
 ## 5.0.0
 
 ### Added
