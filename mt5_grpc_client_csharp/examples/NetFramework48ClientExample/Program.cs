@@ -9,7 +9,7 @@ internal static class Program
 {
     // Terminal / login defaults. Override any of them from the command line:
     //   NetFramework48ClientExample.exe <login> <password> <server> [terminalPath]
-    private const string DefaultServerAddress = "http://10.27.102.101:8292";
+    private const string DefaultServerAddress = "http://10.27.102.101:50051";
     private const string DefaultLogin         = "833671";
     private const string DefaultPassword      = "6cU!DaDy";
     private const string DefaultServer        = "185.97.161.40";
@@ -134,10 +134,18 @@ internal static class Program
         // chunk at the 1000 cap is roughly 77 KB, back inside the size band where
         // the server was seen to abort.
 
+        // date_to is a real upper bound, not "no limit": the server hands both
+        // values straight to MT5, so 0 means 1970-01-01 and a 0..0 window matches
+        // nothing at all. MT5 also stamps deals in broker server time, which can
+        // run hours ahead of UTC, so leave a margin instead of using "now"
+        // exactly -- otherwise a deal that just closed falls outside the window.
+        // Recompute this each polling cycle in a long-running loop.
+        var upperBound = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+
         // 1. Backfill: one pass over the whole history, one chunk held at a time.
         var backfill = new DealsRequest
         {
-            TimeFilter = new TimeFilter { DateFrom = 0, DateTo = 0 },
+            TimeFilter = new TimeFilter { DateFrom = 0, DateTo = upperBound },
         };
 
         var backfilled = 0;
@@ -165,7 +173,7 @@ internal static class Program
             TimeFilter = new TimeFilter
             {
                 DateFrom = anchorMsc / 1000,   // time_msc is milliseconds; date_from is seconds
-                DateTo = 0,
+                DateTo = upperBound,
             },
         };
 

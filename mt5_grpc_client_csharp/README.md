@@ -433,8 +433,15 @@ incremental cycle transfers zero deals.
 ```csharp
 using var client = Mt5GrpcClientFactory.Create("https://localhost:50051");
 
+// date_to is a real upper bound, not "no limit". The server passes both values
+// straight to MT5, so DateTo = 0 means 1970-01-01 and a 0..0 window matches
+// nothing -- the most common cause of an unexpectedly empty read. MT5 stamps
+// deals in broker server time, which can run hours ahead of UTC, so leave a
+// margin rather than using "now" exactly, and recompute it each polling cycle.
+var upperBound = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+
 // 1. Backfill: the whole history, one bounded chunk at a time.
-var backfill = new DealsRequest { TimeFilter = new TimeFilter { DateFrom = 0, DateTo = 0 } };
+var backfill = new DealsRequest { TimeFilter = new TimeFilter { DateFrom = 0, DateTo = upperBound } };
 long anchorMsc = 0;
 
 await foreach (var chunk in client.StreamDealsAsync(backfill))
@@ -450,7 +457,7 @@ await foreach (var chunk in client.StreamDealsAsync(backfill))
 // and is inclusive, so the anchor deal may come back — de-duplicate on Ticket.
 var incremental = new DealsRequest
 {
-    TimeFilter = new TimeFilter { DateFrom = anchorMsc / 1000, DateTo = 0 },
+    TimeFilter = new TimeFilter { DateFrom = anchorMsc / 1000, DateTo = upperBound },
 };
 
 await foreach (var chunk in client.StreamDealsAsync(incremental))
