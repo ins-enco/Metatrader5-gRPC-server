@@ -4,21 +4,17 @@ name: csharp-client-publish
 # organization's GitHub Packages NuGet registry. See
 # specs/004-client-package-distribution/ (Contract C).
 #
-# NOTE: This uses a client-scoped tag prefix, NOT the bare v*.*.* the server's
-# Docker release uses (docker-ghcr.yml). The two artifacts version independently
-# - the server/proto packages are on 0.x while this client is on 5.x - so a
-# shared tag namespace cannot work: a `v0.4.0` server tag would fail this
-# workflow's tag/version guard, and a `v5.1.0` client tag would publish a
-# server image numbered 5.1.0. Keep the prefixes distinct.
+# NOTE: This now shares the v*.*.* tag trigger with the server's Docker release
+# (docker-ghcr.yml); a single v<X.Y.Z> tag fires both workflows.
 #
 # Trigger:
-#   git tag csharp-client-v<X.Y.Z>            # stable
-#   git tag csharp-client-v<X.Y.Z>-<label>    # pre-release
+#   git tag v<X.Y.Z>            # stable
+#   git tag v<X.Y.Z>-<label>    # pre-release
 #   git push origin <tag>
 on:
   push:
     tags:
-      - "csharp-client-v*.*.*"
+      - "v*.*.*"
 
 permissions:
   contents: read
