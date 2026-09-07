@@ -5,7 +5,7 @@ import warnings
 
 from . import deal_pb2 as deal__pb2
 
-GRPC_GENERATED_VERSION = '1.68.1'
+GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in deal_pb2_grpc.py depends on'
+        + ' but the generated code in deal_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -40,6 +40,11 @@ class TradeHistoryServiceStub(object):
                 request_serializer=deal__pb2.DealsRequest.SerializeToString,
                 response_deserializer=deal__pb2.DealsResponse.FromString,
                 _registered_method=True)
+        self.StreamDeals = channel.unary_stream(
+                '/metatrader.v1.TradeHistoryService/StreamDeals',
+                request_serializer=deal__pb2.DealsRequest.SerializeToString,
+                response_deserializer=deal__pb2.DealsResponse.FromString,
+                _registered_method=True)
 
 
 class TradeHistoryServiceServicer(object):
@@ -53,11 +58,26 @@ class TradeHistoryServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StreamDeals(self, request, context):
+        """Same filters as GetDeals, but the result is delivered as a stream of
+        bounded chunks instead of a single message. Use this for large
+        histories: one response carrying a few thousand deals is big enough to
+        hit a partial socket write, which grpcio aborts on under Wine.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TradeHistoryServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'GetDeals': grpc.unary_unary_rpc_method_handler(
                     servicer.GetDeals,
+                    request_deserializer=deal__pb2.DealsRequest.FromString,
+                    response_serializer=deal__pb2.DealsResponse.SerializeToString,
+            ),
+            'StreamDeals': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamDeals,
                     request_deserializer=deal__pb2.DealsRequest.FromString,
                     response_serializer=deal__pb2.DealsResponse.SerializeToString,
             ),
@@ -88,6 +108,33 @@ class TradeHistoryService(object):
             request,
             target,
             '/metatrader.v1.TradeHistoryService/GetDeals',
+            deal__pb2.DealsRequest.SerializeToString,
+            deal__pb2.DealsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamDeals(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/metatrader.v1.TradeHistoryService/StreamDeals',
             deal__pb2.DealsRequest.SerializeToString,
             deal__pb2.DealsResponse.FromString,
             options,

@@ -8,6 +8,12 @@ import "common.proto";
 service TradeHistoryService {
   // Get deals from trading history within specified parameters
   rpc GetDeals(DealsRequest) returns (DealsResponse);
+
+  // Same filters as GetDeals, but the result is delivered as a stream of
+  // bounded chunks instead of a single message. Use this for large
+  // histories: one response carrying a few thousand deals is big enough to
+  // hit a partial socket write, which grpcio aborts on under Wine.
+  rpc StreamDeals(DealsRequest) returns (stream DealsResponse);
 }
 
 // Request message for retrieving deals
@@ -18,6 +24,9 @@ message DealsRequest {
     uint64 position = 3;    // Filter by position ticket
   }
   optional string group = 4;         // Optional symbol group filter
+  // StreamDeals only: deals per streamed message. Defaults to 500, capped
+  // at 1000. Ignored by GetDeals.
+  optional uint32 chunk_size = 5;
 }
 
 // Response containing a list of deals
