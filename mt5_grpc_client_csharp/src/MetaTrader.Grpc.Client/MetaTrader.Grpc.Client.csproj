@@ -12,6 +12,10 @@
     <PackageTags>metatrader;mt5;grpc;protobuf;client</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
+    <!-- GitHub Packages refuses a GITHUB_TOKEN push (403 Forbidden) unless the
+         nuspec carries a repository url it can match against the owning repo. -->
+    <RepositoryUrl>https://github.com/ins-enco/Metatrader5-gRPC-server</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/ins-enco/Metatrader5-gRPC-server</PackageProjectUrl>
     <ProtoContractIdentity>protos-007-stream-deals</ProtoContractIdentity>
     <TestedServerVersionRange>[0.4.0,1.0.0)</TestedServerVersionRange>
     <PackageReadmeFile>README.md</PackageReadmeFile>
