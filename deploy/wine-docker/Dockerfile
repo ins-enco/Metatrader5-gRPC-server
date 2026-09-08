@@ -7,6 +7,12 @@ ENV DISPLAY=:99
 
 ARG PYTHON_VERSION=3.11.9
 
+# Wine is pinned deliberately. Ubuntu 24.04 ships Wine 9.0, under which grpcio
+# aborts the whole process on a partial socket write (a CHECK in
+# windows_endpoint.cc). Leaving it unpinned also means any rebuild silently
+# swaps the production runtime - see the commit message for measurements.
+ARG WINE_VERSION=10.0.0.0~noble-1
+
 RUN dpkg --add-architecture i386 \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -16,10 +22,16 @@ RUN dpkg --add-architecture i386 \
         wget \
         winetricks \
         xvfb \
-        wine \
-        wine64 \
-        wine32 \
         winbind \
+    && mkdir -pm755 /etc/apt/keyrings \
+    && wget -qO /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key \
+    && wget -qNP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources \
+    && apt-get update \
+    && apt-get install -y --install-recommends \
+        winehq-stable=${WINE_VERSION} \
+        wine-stable=${WINE_VERSION} \
+        wine-stable-amd64=${WINE_VERSION} \
+        wine-stable-i386=${WINE_VERSION} \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /opt/installers \
